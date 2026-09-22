@@ -1,0 +1,129 @@
+/* CSS */
+html {
+    line-height: 1.15;
+    -ms-text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    display: block;
+    text-align: center;
+    margin: 20px auto;
+    padding: 20px;
+    background-color: #ffffff;
+    border-radius: 10px;
+    border: 1px solid black;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+    width: 80%;
+    max-width: 90%;
+    overflow: auto;
+}
+
+h1 {
+    font-size: 2em;
+    margin: 0.67em 0;
+}
+
+form {
+    margin-bottom: 20px;
+}
+
+form div {
+    margin-bottom: 10px;
+}
+
+label {
+    display: block;
+    font-weight: bold;
+}
+
+input[type="text"],
+button,
+.row2 {
+    width: calc(100% - 24px);
+    padding: 10px;
+    margin-bottom: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    outline: none;
+    font-size: 0.9em;
+    box-sizing: border-box;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    background-color: #f8f9fa;
+    /* Màu nền của input và button */
+}
+
+input[type="text"]:hover {
+    border-color: #4CAF50;
+    box-shadow: 0px 0px 10px rgba(76, 175, 80, 0.3);
+}
+
+button {
+    background-color: #4CAF50;
+    /* Màu nền của button */
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.row2 {
+    display: block;
+    margin: 0 auto 20px;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+.results {
+    margin-top: 20px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    font-size: 1em; /* Điều chỉnh lại kích thước font */
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    border: 1px solid black;
+}
+
+th {
+    background-color: #f8f9fa;
+    color: black;
+}
+
+tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+#copyNotification {
+    display: none;
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: #fff;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+@media only screen and (min-width: 768px) {
+    .container {
+        max-width: 80%;
+        /* Điều chỉnh max-width cho máy tính */
+    }
+}

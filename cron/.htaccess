@@ -1,0 +1,3 @@
+<FilesMatch "(^\.|\.db$|\.lock$|runner\.php$|security\.php$|run_hidden\.vbs$)">
+    Require all denied
+</FilesMatch>

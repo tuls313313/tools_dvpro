@@ -1,0 +1,16 @@
+{
+  "name": "DVPro Tools",
+  "short_name": "DVPro",
+  "icons": [
+    {
+      "src": "https://tools.dvpro.vn/favicon.png?v=20260713b",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "https://tools.dvpro.vn/",
+  "scope": "https://tools.dvpro.vn/",
+  "display": "standalone",
+  "theme_color": "#0b1220",
+  "background_color": "#0b1220"
+}

@@ -1,0 +1,905 @@
+<div class="convert-page">
+    <header class="convert-header tool-hero">
+        <div>
+            <p class="eyebrow">Công cụ chuyển đổi JSON</p>
+            <h1>Chuyển đổi JSON sang 9router</h1>
+        </div>
+        <div class="privacy-note">Không lưu nội dung đầu vào</div>
+    </header>
+
+    <main class="converter-grid">
+        <section class="panel input-panel">
+            <div class="panel-head">
+                <div>
+                    <h2>Session JSON</h2>
+                    <p>Dán ChatGPT Web session, JSON chỉ có token, JSONL nhiều dòng, hoặc kéo thả tệp JSON/TXT vào ô bên dưới.</p>
+                </div>
+            </div>
+
+            <div class="hint-box">
+                <h3>Session được lấy ở đâu?</h3>
+                <p>Đăng nhập ChatGPT, mở <code>https://chatgpt.com/api/auth/session</code>, sao chép toàn bộ JSON rồi dán vào đây.</p>
+                <p>Công cụ nhận JSON session đầy đủ, JSON chứa <code>access_token</code>/<code>refresh_token</code>, cấu trúc agent identity có <code>credentials.id_token</code>, mảng nhiều tài khoản, hoặc file JSONL có dòng tiêu đề.</p>
+                <p>Với agent identity, khóa <code>agent_private_key</code> không được sao chép sang kết quả. <code>id_token</code> được ánh xạ vào cấu trúc đầu ra nhưng không thể thay thế một OAuth access token thực.</p>
+                <p class="warning">JSON này có token đăng nhập. Chỉ dùng trên máy tin cậy và không chia sẻ cho người khác.</p>
+            </div>
+
+            <div class="input-actions">
+                <label class="soft-btn file-btn" for="fileInput">Chọn tệp</label>
+                <input id="fileInput" type="file" accept=".json,.jsonl,.txt" hidden>
+                <button type="button" class="soft-btn" data-action="call" data-fn="fillExample">Điền ví dụ</button>
+                <button type="button" class="soft-btn ml-auto" data-action="call" data-fn="clearInput">Xóa</button>
+            </div>
+
+            <textarea id="jsonInput" class="json-area" spellcheck="false" placeholder="Dán Session JSON tại đây..."></textarea>
+            <div id="inputStatus" class="status-line">Sẵn sàng chuyển đổi sang 9router.</div>
+        </section>
+
+        <section class="panel output-panel">
+            <div class="panel-head output-head">
+                <div>
+                    <h2>Kết quả chuyển đổi</h2>
+                    <p>Đầu ra hiện tại là định dạng 9router.</p>
+                </div>
+                <div class="result-actions">
+                    <label class="thread-control">
+                        <span>Luồng check</span>
+                        <input id="checkConcurrency" type="number" min="1" max="20" value="3" inputmode="numeric">
+                    </label>
+                    <button type="button" class="primary-btn" data-action="call" data-fn="checkAllUsage">Check</button>
+                    <button type="button" class="soft-btn" data-action="call" data-fn="copyToClipboard">Sao chép</button>
+                    <button type="button" class="primary-btn" data-action="call" data-fn="downloadJSON">Tải JSON</button>
+                </div>
+            </div>
+
+            <div class="summary-row">
+                <div class="summary-card">
+                    <strong id="accountCount">0</strong>
+                    <span>Tài khoản</span>
+                </div>
+                <div class="summary-card">
+                    <strong>9router</strong>
+                    <span>Định dạng</span>
+                </div>
+                <div class="summary-card">
+                    <strong id="skippedCount">0</strong>
+                    <span>Bỏ qua</span>
+                </div>
+            </div>
+
+            <div id="tokenUsageStatus" class="token-usage hidden"></div>
+            <div id="tokenUsageResults" class="token-usage-results hidden"></div>
+
+            <div class="convert-controls">
+                <span>Tự động chuyển đổi khi bạn nhập hoặc dán dữ liệu.</span>
+            </div>
+
+            <div id="outputContainer" class="output-container">
+                <div class="empty-state">Kết quả sẽ hiển thị tại đây sau khi chuyển đổi.</div>
+            </div>
+
+            <div id="statsContainer" class="stats-line hidden"></div>
+        </section>
+    </main>
+</div>
+
+<style>
+  
+    .convert-header {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 20px;
+        max-width: 1280px;
+        margin: 0 auto 22px;
+    }
+    .eyebrow {
+        margin: 0 0 4px;
+        color: #38c6d9;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+    }
+    .convert-header h1 {
+        margin: 0;
+        color: #f7fbff;
+        font-size: clamp(34px, 4vw, 46px);
+        line-height: 1.05;
+        font-weight: 850;
+        letter-spacing: 0;
+    }
+    .privacy-note {
+        border: 1px solid rgba(56, 198, 217, .35);
+        border-radius: 6px;
+        padding: 9px 12px;
+        color: #c8f3f7;
+        background: rgba(8, 30, 38, .58);
+        font-size: 13px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .input-actions,
+    .result-actions,
+    .convert-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .soft-btn,
+    .primary-btn {
+        min-height: 34px;
+        border-radius: 6px;
+        border: 1px solid rgba(126, 173, 187, .34);
+        padding: 0 12px;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+        transition: border-color .15s ease, background .15s ease, color .15s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+    }
+    .soft-btn { background: #17232d; color: #d9edf2; }
+    .soft-btn:hover { border-color: #38c6d9; color: #ffffff; background: #1d303b; }
+    .primary-btn {
+        border-color: #22a9bd;
+        background: #0f7181;
+        color: #fff;
+    }
+    .converter-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 14px;
+        max-width: 1280px;
+        margin: 0 auto;
+        align-items: stretch;
+    }
+    .panel,.panel {
+        min-width: 0;
+        border: 1px solid rgba(126, 173, 187, .24);
+        border-radius: 8px;
+        background: #111a22;
+        box-shadow: 0 22px 60px rgba(0, 0, 0, .22);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+    }
+    .panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    .panel h2 {
+        margin: 0 0 4px;
+        color: #f3fbff;
+        font-size: 15px;
+        font-weight: 800;
+    }
+    .panel p {
+        margin: 0;
+        color: #9db7c4;
+        font-size: 13px;
+        line-height: 1.55;
+    }
+    .hint-box {
+        margin-bottom: 10px;
+        padding: 12px 14px;
+        border: 1px solid rgba(56, 198, 217, .34);
+        border-radius: 6px;
+        background: rgba(16, 55, 66, .54);
+        color: #cde8ef;
+    }
+    .hint-box h3 {
+        margin: 0 0 6px;
+        font-size: 14px;
+        font-weight: 800;
+    }
+    .hint-box code {
+        color: #e7fbff;
+        font-weight: 700;
+        word-break: break-all;
+    }
+    .hint-box .warning {
+        margin-top: 8px;
+        color: #ff9f92;
+        font-weight: 800;
+    }
+    .input-actions { margin-bottom: 8px; }
+    .ml-auto { margin-left: auto; }
+    .json-area {
+        display: block;
+        width: 100%;
+        flex: 1 1 auto;
+        min-height: 360px;
+        resize: vertical;
+        border: 1px solid rgba(126, 173, 187, .34);
+        border-radius: 6px;
+        background: #0b1117;
+        color: #dff5f9;
+        padding: 12px;
+        font: 12px/1.55 Consolas, "Liberation Mono", Menlo, monospace;
+        outline: none;
+    }
+    .json-area::placeholder { color: #5f7784; }
+    .json-area:focus { border-color: #38c6d9; box-shadow: 0 0 0 3px rgba(56, 198, 217, .12); }
+    .status-line,
+    .stats-line {
+        min-height: 22px;
+        padding-top: 8px;
+        color: #59d99a;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .output-head { align-items: center; }
+    .thread-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #9db7c4;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .thread-control input {
+        width: 52px;
+        min-height: 34px;
+        border: 1px solid rgba(126, 173, 187, .34);
+        border-radius: 6px;
+        background: #17232d;
+        color: #f3fbff;
+        padding: 0 8px;
+        font: inherit;
+        text-align: center;
+    }
+    .thread-control input:focus {
+        border-color: #38c6d9;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(56, 198, 217, .12);
+    }
+    .primary-btn:disabled {
+        cursor: wait;
+        opacity: .65;
+    }
+    .token-usage-results {
+        margin-bottom: 10px;
+        max-height: 360px;
+        overflow: auto;
+    }
+    .usage-table-wrap {
+        border: 1px solid rgba(126, 173, 187, .24);
+        border-radius: 6px;
+        background: #101821;
+        overflow: auto;
+    }
+    .usage-table {
+        width: 100%;
+        min-width: 420px;
+        border-collapse: collapse;
+        color: #d9edf2;
+        font-size: 12px;
+    }
+    .usage-table th,
+    .usage-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(126, 173, 187, .14);
+        text-align: left;
+        vertical-align: middle;
+    }
+    .usage-table th {
+        background: rgba(56, 198, 217, .08);
+        color: #9fcbd4;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .usage-table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+    .usage-table tbody tr:hover {
+        background: rgba(255, 255, 255, .035);
+    }
+    .usage-table-email {
+        max-width: 360px;
+        overflow: hidden;
+        color: #f3fbff;
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .usage-table-plan,
+    .usage-table-quota {
+        color: #d9edf2;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .usage-table-quota.ok {
+        color: #71e6a9;
+    }
+    .usage-table-quota.bad {
+        color: #ff9f92;
+    }
+    .summary-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .summary-card {
+        min-height: 64px;
+        border: 1px solid rgba(126, 173, 187, .24);
+        border-radius: 6px;
+        background: #17232d;
+        padding: 11px 12px;
+    }
+    .summary-card strong {
+        display: block;
+        color: #f3fbff;
+        font-size: 18px;
+        line-height: 1.1;
+    }
+    .summary-card span {
+        display: block;
+        margin-top: 8px;
+        color: #91aeba;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .token-usage {
+        margin-bottom: 10px;
+        border: 1px solid rgba(126, 173, 187, .24);
+        border-radius: 6px;
+        background: #101821;
+        padding: 10px 12px;
+        color: #d9edf2;
+        font-size: 12px;
+    }
+    .token-usage.ok { border-color: rgba(89, 217, 154, .42); background: rgba(14, 82, 54, .36); }
+    .token-usage.bad { border-color: rgba(255, 124, 110, .46); background: rgba(92, 29, 24, .38); }
+    .token-usage.checking { border-color: rgba(56, 198, 217, .38); background: rgba(16, 55, 66, .42); }
+    .token-usage-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+        font-weight: 800;
+    }
+    .token-usage.ok .token-usage-title { color: #71e6a9; }
+    .token-usage.bad .token-usage-title { color: #ff9f92; }
+    .token-usage-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+    .token-usage-item {
+        min-width: 0;
+        border: 1px solid rgba(126, 173, 187, .20);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, .045);
+        padding: 7px 8px;
+    }
+    .token-usage-item span {
+        display: block;
+        color: #91aeba;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    .token-usage-item strong {
+        display: block;
+        margin-top: 3px;
+        overflow: hidden;
+        color: #f3fbff;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .token-usage-message {
+        margin-top: 8px;
+        color: #ffb7ae;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .convert-controls {
+        margin-bottom: 10px;
+        color: #91aeba;
+        font-size: 13px;
+    }
+    .output-container {
+        flex: 1 1 auto;
+        min-height: 430px;
+        border: 1px solid rgba(126, 173, 187, .34);
+        border-radius: 6px;
+        background: #0b1117;
+        overflow: auto;
+    }
+    .output-container pre {
+        min-height: 100%;
+        margin: 0;
+        padding: 14px;
+        color: #dff5f9;
+        font: 12px/1.55 Consolas, "Liberation Mono", Menlo, monospace;
+        white-space: pre;
+    }
+    .empty-state,
+    .loading-state,
+    .error-state,
+    .success-state {
+        padding: 18px;
+        font-size: 14px;
+    }
+    .empty-state { color: #738b98; }
+    .loading-state { color: #67d7e6; }
+    .error-state { color: #ff9f92; background: rgba(92, 29, 24, .38); border-bottom: 1px solid rgba(255, 124, 110, .28); }
+    .success-state { color: #71e6a9; background: rgba(14, 82, 54, .36); border-bottom: 1px solid rgba(89, 217, 154, .28); }
+    .hidden { display: none !important; }
+    @media (max-width: 900px) {
+        .convert-page { padding: 20px 12px 28px; }
+        .convert-header { flex-direction: column; align-items: flex-start; margin-bottom: 14px; }
+        .privacy-note { white-space: normal; }
+        .converter-grid { grid-template-columns: 1fr; }
+        .output-head { align-items: flex-start; flex-direction: column; }
+        .json-area, .output-container { height: 340px; }
+    }
+
+    .converter-app { color: #e2e8f0; }
+    .panel { background: linear-gradient(180deg,rgba(16,24,39,.96),rgba(12,18,32,.94)) !important; border:1px solid rgba(148,163,184,.14) !important; border-radius:1.35rem !important; box-shadow:0 22px 60px rgba(2,8,23,.48) !important; }
+    .soft-btn, .primary-btn { border-radius: .9rem !important; }
+    .primary-btn { background: linear-gradient(135deg,#3b82f6,#6366f1) !important; border:0 !important; }
+    .json-area, textarea { background: rgba(2,8,23,.38) !important; border:1px solid rgba(148,163,184,.14) !important; border-radius:1rem !important; color:#fff !important; }
+</style>
+
+<script <?= function_exists('dvproNonceAttr') ? dvproNonceAttr() : '' ?>>
+const convertCsrf = <?= json_encode(dvproCsrfToken(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    let lastResult = null;
+    let convertTimer = null;
+    let usageRequestId = 0;
+
+    const fileInput = document.getElementById('fileInput');
+    const jsonInput = document.getElementById('jsonInput');
+    const inputStatus = document.getElementById('inputStatus');
+    const tokenUsageStatus = document.getElementById('tokenUsageStatus');
+
+    jsonInput.addEventListener('input', () => {
+        scheduleConvert();
+    });
+
+    fileInput.addEventListener('change', (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (readerEvent) => {
+            jsonInput.value = readerEvent.target.result;
+            inputStatus.textContent = `Đã tải tệp: ${file.name}`;
+            scheduleConvert(100);
+        };
+        reader.readAsText(file);
+    });
+
+    jsonInput.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        jsonInput.classList.add('dragging');
+    });
+
+    jsonInput.addEventListener('drop', (event) => {
+        event.preventDefault();
+        const file = event.dataTransfer.files && event.dataTransfer.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (readerEvent) => {
+            jsonInput.value = readerEvent.target.result;
+            inputStatus.textContent = `Đã tải tệp: ${file.name}`;
+            scheduleConvert(100);
+        };
+        reader.readAsText(file);
+    });
+
+    function scheduleConvert(delay = 550) {
+        window.clearTimeout(convertTimer);
+
+        if (!jsonInput.value.trim()) {
+            resetOutput();
+            return;
+        }
+
+        inputStatus.textContent = 'Đang chờ dữ liệu ổn định để tự động chuyển đổi...';
+        convertTimer = window.setTimeout(() => {
+            convertJSON();
+        }, delay);
+    }
+
+    async function convertJSON() {
+        const rawInput = jsonInput.value;
+        const outputContainer = document.getElementById('outputContainer');
+
+        if (!rawInput.trim()) {
+            showError('Vui lòng nhập Session JSON trước khi chuyển đổi.');
+            return;
+        }
+
+        outputContainer.innerHTML = '<div class="loading-state">Đang chuyển đổi sang 9router...</div>';
+
+        try {
+            const response = await fetch('index.php?action=convert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': convertCsrf || '' },
+                body: JSON.stringify({ json_input: rawInput })
+            });
+
+            const result = await readJsonResponse(response);
+            lastResult = result;
+
+            if (result.status === 'success') {
+                displayResult(result);
+            } else {
+                showError(result.message || 'Không thể chuyển đổi dữ liệu.');
+            }
+        } catch (error) {
+            showError(`Lỗi xử lý: ${error.message}`);
+        }
+    }
+
+    function displayResult(result) {
+        const outputContainer = document.getElementById('outputContainer');
+        const accounts = Number(result.accounts || 0);
+        const skipped = Number(result.skipped || 0);
+
+        document.getElementById('accountCount').textContent = accounts;
+        document.getElementById('skippedCount').textContent = skipped;
+        inputStatus.textContent = `Chuyển đổi xong: ${accounts} tài khoản, bỏ qua ${skipped} mục.`;
+
+        const content = JSON.stringify(getOutputPayload(result), null, 2);
+        outputContainer.innerHTML = `
+            <div class="success-state">Đã tạo ${accounts} tài khoản 9router.</div>
+            <pre>${escapeHtml(content)}</pre>
+        `;
+
+        const statsContainer = document.getElementById('statsContainer');
+        statsContainer.textContent = `Hoàn tất lúc ${new Date().toLocaleString('vi-VN')}.`;
+        statsContainer.classList.remove('hidden');
+        hideTokenUsage();
+        resetUsageResults();
+    }
+
+    function showError(message) {
+        document.getElementById('outputContainer').innerHTML = `<div class="error-state">${escapeHtml(message)}</div>`;
+        inputStatus.textContent = 'Chưa chuyển đổi được dữ liệu.';
+        hideTokenUsage();
+        resetUsageResults();
+    }
+
+    function fillExample() {
+        jsonInput.value = JSON.stringify({
+            access_token: 'eyJhbGciOiAiSFMyNTYifQ.eyJzdWIiOiAidXNlckBleGFtcGxlLmNvbSIsICJhY2NvdW50X2lkIjogImFjY190ZXN0IiwgImV4cCI6IDE5MDAwMDAwMDB9.signature',
+            refresh_token: 'refresh_token_mau',
+            email: 'user@example.com'
+        }, null, 2);
+        inputStatus.textContent = 'Đã điền dữ liệu ví dụ.';
+        scheduleConvert(100);
+    }
+
+    function clearInput() {
+        jsonInput.value = '';
+        fileInput.value = '';
+        window.clearTimeout(convertTimer);
+        resetOutput();
+    }
+
+    function resetOutput() {
+        lastResult = null;
+        document.getElementById('accountCount').textContent = '0';
+        document.getElementById('skippedCount').textContent = '0';
+        document.getElementById('outputContainer').innerHTML = '<div class="empty-state">Kết quả sẽ hiển thị tại đây sau khi chuyển đổi.</div>';
+        document.getElementById('statsContainer').classList.add('hidden');
+        hideTokenUsage();
+        resetUsageResults();
+        inputStatus.textContent = 'Sẵn sàng chuyển đổi sang 9router.';
+    }
+
+    function downloadJSON() {
+        if (!lastResult || lastResult.status !== 'success') {
+            showError('Chưa có kết quả hợp lệ để tải xuống.');
+            return;
+        }
+        const content = JSON.stringify(getOutputPayload(lastResult), null, 2);
+        const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `9router_${Date.now()}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
+    async function copyToClipboard() {
+        if (!lastResult || lastResult.status !== 'success') {
+            showError('Chưa có kết quả hợp lệ để sao chép.');
+            return;
+        }
+        const content = JSON.stringify(getOutputPayload(lastResult), null, 2);
+        try {
+            await navigator.clipboard.writeText(content);
+            inputStatus.textContent = 'Đã sao chép kết quả vào clipboard.';
+        } catch (error) {
+            showError('Không thể sao chép tự động. Vui lòng chọn kết quả và sao chép thủ công.');
+        }
+    }
+
+    async function checkAllUsage() {
+        if (!lastResult || lastResult.status !== 'success') {
+            showError('Chưa có kết quả hợp lệ để kiểm tra.');
+            return;
+        }
+
+        const accounts = Array.isArray(lastResult.data) ? lastResult.data : [];
+        if (!accounts.length) {
+            showError('Không có tài khoản nào để kiểm tra.');
+            return;
+        }
+
+        const concurrencyInput = document.getElementById('checkConcurrency');
+        const concurrency = Math.max(1, Math.min(20, Number.parseInt(concurrencyInput.value, 10) || 1));
+        concurrencyInput.value = String(concurrency);
+
+        usageRequestId += 1;
+        const requestId = usageRequestId;
+        const checkButton = document.querySelector('[data-fn="checkAllUsage"]');
+        if (checkButton) checkButton.disabled = true;
+
+        const results = new Array(accounts.length);
+        tokenUsageStatus.className = 'token-usage checking';
+        tokenUsageStatus.innerHTML = ''
+            + '<div class="token-usage-title">'
+            + '<span>Đang kiểm tra ' + accounts.length + ' tài khoản...</span>'
+            + '<span>Luồng ' + concurrency + '</span>'
+            + '</div>'
+            + usageGrid({
+                rateLimit: 'Luồng ' + concurrency,
+                used: '0/' + accounts.length,
+                credits: 'Đang kiểm tra'
+            });
+        renderUsageTable(results, accounts.length);
+
+        let nextIndex = 0;
+        let renderScheduled = false;
+        const queueUsageRender = () => {
+            if (renderScheduled) return;
+            renderScheduled = true;
+            const flush = () => {
+                renderScheduled = false;
+                if (requestId === usageRequestId) renderUsageTable(results, accounts.length);
+            };
+            if (typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(flush);
+            } else {
+                window.setTimeout(flush, 0);
+            }
+        };
+        const worker = async () => {
+            while (true) {
+                const index = nextIndex++;
+                if (index >= accounts.length) return;
+
+                results[index] = await requestUsage(accounts[index]);
+                if (requestId !== usageRequestId) return;
+                queueUsageRender();
+            }
+        };
+
+        try {
+            await Promise.all(Array.from(
+                { length: Math.min(concurrency, accounts.length) },
+                () => worker()
+            ));
+        } finally {
+            if (renderScheduled) {
+                renderScheduled = false;
+            }
+            if (requestId === usageRequestId) {
+                renderUsageTable(results, accounts.length);
+                if (checkButton) checkButton.disabled = false;
+            }
+        }
+
+        if (requestId !== usageRequestId) return;
+
+        const finished = results.filter(Boolean).length;
+        const active = results.filter((entry) => entry && entry.active).length;
+        tokenUsageStatus.className = 'token-usage ' + (active === finished ? 'ok' : 'bad');
+        tokenUsageStatus.innerHTML = ''
+            + '<div class="token-usage-title">'
+            + '<span>Đã kiểm tra ' + finished + '/' + accounts.length + ' tài khoản</span>'
+            + '<span>Hoạt động ' + active + '</span>'
+            + '</div>'
+            + usageGrid({
+                rateLimit: 'Luồng ' + concurrency,
+                used: finished + '/' + accounts.length,
+                credits: active + ' hoạt động'
+            });
+        inputStatus.textContent = 'Đã check ' + finished + '/' + accounts.length + ' tài khoản với ' + concurrency + ' luồng.';
+    }
+
+    async function requestUsage(account) {
+        const token = account && (account.accessToken || account.access_token);
+        if (!token) {
+            return {
+                account,
+                result: { status: 'error', message: 'Tài khoản không có access token.' },
+                active: false
+            };
+        }
+
+        try {
+            const response = await fetch('index.php?action=check_usage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': convertCsrf || '' },
+                body: JSON.stringify({ token })
+            });
+            const result = await readJsonResponse(response);
+            return {
+                account,
+                result,
+                active: result.status === 'success' && Boolean(result.active)
+            };
+        } catch (error) {
+            return {
+                account,
+                result: {
+                    status: 'error',
+                    message: 'Lỗi kiểm tra token: ' + error.message
+                },
+                active: false
+            };
+        }
+    }
+
+    function renderUsageTable(results, total) {
+        const container = document.getElementById('tokenUsageResults');
+        const finished = results.filter(Boolean).length;
+        container.className = 'token-usage-results ' + (finished ? '' : 'hidden');
+
+        const rows = results.map((entry, index) => {
+            if (!entry) return '';
+
+            const account = entry.account || {};
+            const result = entry.result || {};
+            const isActive = Boolean(entry.active);
+            const email = result.email || account.email || account.name || ('Account #' + (index + 1));
+            const plan = result.plan_type || '-';
+            const rateLimit = result.rate_limit || {};
+            const usedPercent = rateLimit.used_percent !== null && rateLimit.used_percent !== undefined
+                ? rateLimit.used_percent + '%'
+                : '-';
+            const errorTitle = isActive ? '' : (result.message || ('HTTP ' + (result.status_code || '-')));
+            const titleAttr = errorTitle ? ' title="' + escapeHtml(errorTitle) + '"' : '';
+
+            return '<tr class="' + (isActive ? 'ok' : 'bad') + '"' + titleAttr + '>'
+                + '<td class="usage-table-email">' + escapeHtml(email) + '</td>'
+                + '<td class="usage-table-plan">' + escapeHtml(plan) + '</td>'
+                + '<td class="usage-table-quota ' + (isActive ? 'ok' : 'bad') + '">' + escapeHtml(usedPercent) + '</td>'
+                + '</tr>';
+        }).join('');
+
+        container.innerHTML = rows
+            ? '<div class="usage-table-wrap"><table class="usage-table">'
+                + '<thead><tr><th>Email</th><th>G&#243;i</th><th>Quota &#273;&#227; d&#249;ng</th></tr></thead>'
+                + '<tbody>' + rows + '</tbody>'
+                + '</table></div>'
+            : '';
+    }
+    function isSyntheticIdentityToken(token) {
+        try {
+            const headerPart = String(token).split('.')[0];
+            if (!headerPart) return false;
+            const normalized = headerPart.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+            const header = JSON.parse(atob(padded));
+            return header.cpa_synthetic === true || header.alg === 'none';
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function renderTokenUsage(result) {
+        const active = Boolean(result.active);
+        const rateLimit = result.rate_limit || {};
+        const credits = result.credits || {};
+
+        tokenUsageStatus.className = `token-usage ${active ? 'ok' : 'bad'}`;
+        tokenUsageStatus.innerHTML = `
+            <div class="token-usage-title">
+                <span>${active ? 'Token đang hoạt động tốt' : 'Token có vấn đề'}</span>
+                <span>HTTP ${escapeHtml(result.status_code || '-')}</span>
+            </div>
+            ${usageGrid({
+                email: result.email || '-',
+                plan: result.plan_type || '-',
+                rateLimit: rateLimit.allowed ? 'Được phép' : 'Không được phép',
+                used: rateLimit.used_percent !== null && rateLimit.used_percent !== undefined ? `${rateLimit.used_percent}%` : '-',
+                reset: rateLimit.reset_at || '-',
+                credits: formatCredits(credits)
+            })}
+        `;
+    }
+
+    function renderTokenUsageError(message, statusCode = null) {
+        tokenUsageStatus.className = 'token-usage bad';
+        tokenUsageStatus.innerHTML = `
+            <div class="token-usage-title">
+                <span>Không kiểm tra được token</span>
+                <span>${statusCode ? `HTTP ${escapeHtml(statusCode)}` : 'Lỗi'}</span>
+            </div>
+            ${usageGrid({})}
+            <div class="token-usage-message">${escapeHtml(message)}</div>
+        `;
+    }
+
+    function hideTokenUsage() {
+        usageRequestId += 1;
+        tokenUsageStatus.className = 'token-usage hidden';
+        tokenUsageStatus.innerHTML = '';
+    }
+
+    function resetUsageResults() {
+        const container = document.getElementById('tokenUsageResults');
+        if (!container) return;
+        container.className = 'token-usage-results hidden';
+        container.innerHTML = '';
+    }
+
+    function usageItem(label, value) {
+        return `<div class="token-usage-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+    }
+
+    function usageGrid(values) {
+        return `
+            <div class="token-usage-grid">
+                ${usageItem('Email', values.email || '-')}
+                ${usageItem('Gói', values.plan || '-')}
+                ${usageItem('Rate limit', values.rateLimit || '-')}
+                ${usageItem('Đã dùng', values.used || '-')}
+                ${usageItem('Reset', values.reset || '-')}
+                ${usageItem('Credits', values.credits || '-')}
+            </div>
+        `;
+    }
+
+    function formatCredits(credits) {
+        if (credits.unlimited) return 'Không giới hạn';
+        if (credits.has_credits === true) return 'Còn credits';
+        if (credits.has_credits === false) return 'Không có credits';
+        return '-';
+    }
+
+    function escapeHtml(text) {
+        return String(text).replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[char]));
+    }
+
+    async function readJsonResponse(response) {
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            const plainText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            const preview = plainText ? plainText.slice(0, 220) : 'Phản hồi rỗng';
+            throw new Error(`Server không trả JSON. HTTP ${response.status}. ${preview}`);
+        }
+    }
+
+    function getOutputPayload(result) {
+        const data = Array.isArray(result.data) ? result.data : [];
+        return data.length === 1 ? data[0] : data;
+    }
+</script>

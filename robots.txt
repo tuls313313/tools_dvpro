@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+Disallow: /cron/runner.php
+Disallow: /cron/cron.db
+Disallow: /tmp/
+Disallow: /mail/app/Data/
+Disallow: /convert/cache/
+Disallow: /convert/logs/
+Disallow: /convert/test_converter.php
+Disallow: /convert/example_session.json
+Disallow: /*/logs/
+Disallow: /*/cache/
+Disallow: /*/cache_*/
+Disallow: /*/ratelimit/
+
+Sitemap: https://tools.dvpro.vn/sitemap.xml

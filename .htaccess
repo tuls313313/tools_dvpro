@@ -1,0 +1,104 @@
+Options -Indexes
+ServerSignature Off
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Force HTTPS on the production host tools.dvpro.vn
+    RewriteCond %{HTTP_HOST} ^(www\.)?tools\.dvpro\.vn$ [NC]
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^ https://tools.dvpro.vn%{REQUEST_URI} [R=301,L]
+
+    RewriteCond %{HTTP_HOST} ^www\.tools\.dvpro\.vn$ [NC]
+    RewriteRule ^ https://tools.dvpro.vn%{REQUEST_URI} [R=301,L]
+
+    # Redirect the old singular hostname if it is ever configured.
+    RewriteCond %{HTTP_HOST} ^(www\.)?tool\.dvpro\.vn$ [NC]
+    RewriteRule ^ https://tools.dvpro.vn%{REQUEST_URI} [R=301,L]
+
+    # Block sensitive runtime paths
+    RewriteRule (^|/)(\.git|\.svn|\.hg|vendor|node_modules)/ - [F,L]
+    RewriteRule ^cron/(runner\.php|cron\.db|runner_task_.*\.lock|runner\.lock)$ - [F,L]
+    RewriteRule ^cron/(maintenance|login_attempts)/ - [F,L]
+    RewriteRule ^(mail|nang_gpt)/app/Data/ - [F,L,NC]
+    RewriteRule ^convert/(cache|logs)/ - [F,L,NC]
+    RewriteRule ^convert/(example_session\.json|test_converter\.php)$ - [F,L]
+    RewriteRule ^tmp/ - [F,L]
+    RewriteRule ^storage/ - [F,L]
+    RewriteRule ^convert/(INSTALLATION\.md|README\.md)$ - [F,L]
+    RewriteRule ^cron/run_hidden\.vbs$ - [F,L]
+    RewriteRule ^check_threads/(cache_threads|logs|ratelimit)/ - [F,L]
+    RewriteRule ^check_usname_tiktok/(cache_tiktok|ratelimit|logs|ua_fingerprint|die_streak)/ - [F,L]
+    RewriteRule ^check_usname_instagram/(cache|cache_instagram|ratelimit|logs|ua_fingerprint|die_streak)/ - [F,L]
+    RewriteRule ^(env\.php|security_helpers\.php|session_security\.php)$ - [F,L]
+</IfModule>
+
+# Base security headers (safe for local + production)
+<IfModule mod_headers.c>
+    Header unset X-Powered-By
+    Header always unset X-Powered-By
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+    Header always set X-XSS-Protection "0"
+    # NOTE: HSTS + upgrade-insecure-requests are only for production host
+</IfModule>
+
+# Production-only hardened headers
+<IfModule mod_setenvif.c>
+    SetEnvIf Host "(^|\\.)tools\\.dvpro\\.vn$" DVPRO_PROD=1
+</IfModule>
+<IfModule mod_headers.c>
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" env=DVPRO_PROD
+#     Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; upgrade-insecure-requests" env=DVPRO_PROD  # moved to PHP nonce CSP
+    # Local/dev CSP without upgrade-insecure-requests (prevents http://localhost asset breakage)
+#     Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https: http:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" env=!DVPRO_PROD  # moved to PHP nonce CSP
+</IfModule>
+
+# Compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json application/xml image/svg+xml
+</IfModule>
+<IfModule mod_brotli.c>
+    AddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/xml text/css text/javascript application/javascript application/json application/xml image/svg+xml
+</IfModule>
+
+# Browser caching for static assets
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresDefault "access plus 1 hour"
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType text/javascript "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 365 days"
+    ExpiresByType font/woff "access plus 365 days"
+    ExpiresByType application/font-woff2 "access plus 365 days"
+    ExpiresByType application/manifest+json "access plus 7 days"
+</IfModule>
+
+<IfModule mod_headers.c>
+    <FilesMatch "\.(css|js|png|jpg|jpeg|gif|webp|ico|svg|woff|woff2)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    <FilesMatch "\.(html|php)$">
+        Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        Header always set Pragma "no-cache"
+        Header always set Expires "0"
+    </FilesMatch>
+</IfModule>
+
+# Deny sensitive file types everywhere
+<FilesMatch "(^\.|\.db$|\.sqlite$|\.sql$|\.bak$|\.backup$|\.log$|\.jsonl$|\.lock$|\.ini$|\.env$|\.pem$|\.key$|composer\.(json|lock)$|package(-lock)?\.json$|mail_accounts\.txt$|submit_logs\.jsonl$|orders\.json$)">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "(^|/)(cron\.db|runner\.php|env\.php)$">
+    Require all denied
+</FilesMatch>
