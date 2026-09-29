@@ -26,7 +26,7 @@
 
             <div class="input-actions">
                 <label class="soft-btn file-btn" for="fileInput">Chọn tệp</label>
-                <input id="fileInput" type="file" accept=".json,.jsonl,.txt" hidden>
+                <input id="fileInput" type="file" accept=".json,.jsonl,.txt" multiple hidden>
                 <button type="button" class="soft-btn" data-action="call" data-fn="fillExample">Điền ví dụ</button>
                 <button type="button" class="soft-btn ml-auto" data-action="call" data-fn="clearInput">Xóa</button>
             </div>
@@ -471,15 +471,7 @@ const convertCsrf = <?= json_encode(dvproCsrfToken(), JSON_UNESCAPED_UNICODE | J
     });
 
     fileInput.addEventListener('change', (event) => {
-        const file = event.target.files && event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (readerEvent) => {
-            jsonInput.value = readerEvent.target.result;
-            inputStatus.textContent = `Đã tải tệp: ${file.name}`;
-            scheduleConvert(100);
-        };
-        reader.readAsText(file);
+        loadSelectedFiles(event.target.files);
     });
 
     jsonInput.addEventListener('dragover', (event) => {
@@ -489,16 +481,59 @@ const convertCsrf = <?= json_encode(dvproCsrfToken(), JSON_UNESCAPED_UNICODE | J
 
     jsonInput.addEventListener('drop', (event) => {
         event.preventDefault();
-        const file = event.dataTransfer.files && event.dataTransfer.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (readerEvent) => {
-            jsonInput.value = readerEvent.target.result;
-            inputStatus.textContent = `Đã tải tệp: ${file.name}`;
-            scheduleConvert(100);
-        };
-        reader.readAsText(file);
+        loadSelectedFiles(event.dataTransfer.files);
     });
+
+    function readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Không thể đọc tệp ' + file.name + '.'));
+            reader.readAsText(file);
+        });
+    }
+
+    function parseFileItems(content, fileName) {
+        try {
+            const parsed = JSON.parse(content);
+            if (Array.isArray(parsed)) return parsed;
+            if (parsed && Array.isArray(parsed.accounts)) return parsed.accounts;
+            if (parsed && Array.isArray(parsed.data)) return parsed.data;
+            return [parsed];
+        } catch (error) {
+            const items = [];
+            const lines = content.replace(/^\uFEFF/, '').split(/\r?\n/);
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed[0] !== '{') continue;
+                try {
+                    items.push(JSON.parse(trimmed));
+                } catch (lineError) {
+                    throw new Error('Tệp ' + fileName + ' chứa JSON không hợp lệ.');
+                }
+            }
+            if (!items.length) {
+                throw new Error('Tệp ' + fileName + ' không chứa JSON hợp lệ.');
+            }
+            return items;
+        }
+    }
+
+    async function loadSelectedFiles(fileList) {
+        const files = Array.from(fileList || []);
+        if (!files.length) return;
+
+        try {
+            const contents = await Promise.all(files.map(readFileAsText));
+            const items = contents.flatMap((content, index) => parseFileItems(content, files[index].name));
+            jsonInput.value = JSON.stringify(items, null, 2);
+            const names = files.map(file => file.name).join(', ');
+            inputStatus.textContent = 'Đã tải ' + files.length + ' tệp: ' + names;
+            scheduleConvert(100);
+        } catch (error) {
+            showError(error.message || 'Không thể đọc các tệp đã chọn.');
+        }
+    }
 
     function scheduleConvert(delay = 550) {
         window.clearTimeout(convertTimer);
