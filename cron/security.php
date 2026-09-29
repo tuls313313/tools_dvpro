@@ -26,9 +26,9 @@ function cronSessionStart(): void
         $sameSite = 'Lax';
     }
 
-    ini_set('session.gc_maxlifetime', '3600');
+    ini_set('session.gc_maxlifetime', '2592000');
     session_set_cookie_params([
-        'lifetime' => 3600,
+        'lifetime' => 2592000,
         'path' => '/',
         'secure' => $secure,
         'httponly' => true,
