@@ -5,11 +5,6 @@ require_once dirname(__DIR__) . '/env.php';
 
 function cronSessionStart(): void
 {
-    if (function_exists('secureSessionStart')) {
-        secureSessionStart();
-        return;
-    }
-
     if (session_status() === PHP_SESSION_ACTIVE) {
         return;
     }
@@ -19,12 +14,25 @@ function cronSessionStart(): void
         || str_contains((string)($_SERVER['HTTP_CF_VISITOR'] ?? ''), 'https')
         || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
 
+    $secureMode = strtolower((string)dvproEnv('SESSION_SECURE', 'auto'));
+    $secure = match ($secureMode) {
+        '1', 'true', 'yes', 'on' => true,
+        '0', 'false', 'no', 'off' => false,
+        default => $https,
+    };
+
+    $sameSite = (string)dvproEnv('SESSION_SAMESITE', 'Lax');
+    if (!in_array($sameSite, ['Lax', 'Strict', 'None'], true)) {
+        $sameSite = 'Lax';
+    }
+
+    ini_set('session.gc_maxlifetime', '3600');
     session_set_cookie_params([
-        'lifetime' => 0,
+        'lifetime' => 3600,
         'path' => '/',
-        'secure' => $https,
+        'secure' => $secure,
         'httponly' => true,
-        'samesite' => 'Lax',
+        'samesite' => $sameSite,
     ]);
     session_start();
 }
