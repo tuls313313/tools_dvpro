@@ -445,42 +445,72 @@ ob_start(); ?>
       <?php unset($_SESSION['cron_login_error']); ?>
     <?php endif; ?>
 
-    <form method="POST" class="space-y-4">
+    <form id="loginForm" method="POST" class="space-y-4" autocomplete="off">
       <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
       <div class="field">
         <label>Username</label>
-        <input type="text" name="login_code" required placeholder="Nhập username..." class="input" autocomplete="username">
+        <input type="text" name="login_code" required placeholder="Nhập username..." class="input" autocomplete="off" autocapitalize="none" spellcheck="false">
       </div>
       <button type="submit" class="btn btn-primary btn-block">
         <i class="fas fa-right-to-bracket"></i> Đăng nhập
       </button>
     </form>
 
-    <?php if (!empty($_SESSION['cron_register_error'])): ?>
-      <div class="alert alert-error mb-4"><?= e($_SESSION['cron_register_error']) ?></div>
-      <?php unset($_SESSION['cron_register_error']); ?>
-    <?php endif; ?>
+<script <?= function_exists('dvproNonceAttr') ? dvproNonceAttr() : '' ?>>
+document.addEventListener('DOMContentLoaded', function () {
+  const loginForm = document.getElementById('loginForm');
+  const registerPanel = document.getElementById('registerPanel');
+  const accountHelp = document.getElementById('accountHelp');
+  const showRegisterBtn = document.getElementById('showRegisterBtn');
+  const showLoginBtn = document.getElementById('showLoginBtn');
+  if (!loginForm || !registerPanel || !accountHelp) return;
 
-    <form method="POST" class="space-y-4">
-      <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
-      <input type="hidden" name="action" value="register_username">
-      <div class="field">
-        <label>Tạo tài khoản bằng username</label>
-        <input type="text" name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.-]{3,32}" placeholder="Ví dụ: user123" class="input" autocomplete="username">
-      </div>
-      <button type="submit" class="btn btn-secondary btn-block">
-        <i class="fas fa-user-plus"></i> Tạo tài khoản
-      </button>
-    </form>
+  showRegisterBtn?.addEventListener('click', function () {
+    loginForm.classList.add('hidden');
+    accountHelp.classList.add('hidden');
+    registerPanel.classList.remove('hidden');
+    document.querySelector('input[name="username"]')?.focus();
+  });
 
-    <div class="card-soft p-4 mt-5">
+  showLoginBtn?.addEventListener('click', function () {
+    registerPanel.classList.add('hidden');
+    loginForm.classList.remove('hidden');
+    accountHelp.classList.remove('hidden');
+    document.querySelector('input[name="login_code"]')?.focus();
+  });
+});
+</script>
+
+    <div id="registerPanel" class="<?= !empty($_SESSION['cron_register_error']) ? '' : 'hidden' ?>">
+      <?php if (!empty($_SESSION['cron_register_error'])): ?>
+        <div class="alert alert-error mb-4"><?= e($_SESSION['cron_register_error']) ?></div>
+        <?php unset($_SESSION['cron_register_error']); ?>
+      <?php endif; ?>
+
+      <form method="POST" class="space-y-4" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
+        <input type="hidden" name="action" value="register_username">
+        <div class="field">
+          <label>Tạo tài khoản bằng username</label>
+          <input type="text" name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.-]{3,32}" placeholder="Ví dụ: user123" class="input" autocomplete="off" autocapitalize="none" spellcheck="false">
+        </div>
+        <button type="submit" class="btn btn-secondary btn-block">
+          <i class="fas fa-user-plus"></i> Tạo tài khoản
+        </button>
+      </form>
+
+      <button type="button" id="showLoginBtn" class="btn btn-ghost btn-block mt-3">Đã có tài khoản? Đăng nhập</button>
+    </div>
+
+    <div id="accountHelp" class="card-soft p-4 mt-5">
       <div class="flex items-start gap-3">
         <div class="tool-icon blue" style="width:2.5rem;height:2.5rem;font-size:1rem"><i class="fas fa-circle-info"></i></div>
         <div>
-          <p class="text-sm font-semibold text-white m-0">Đăng ký hoặc đăng nhập bằng username</p>
+          <p class="text-sm font-semibold text-white m-0">Chưa có tài khoản?</p>
           <p class="text-xs text-text-muted mt-1 mb-0">Tài khoản mới chỉ cần username, không cần mật khẩu.</p>
         </div>
       </div>
+<button type="button" id="showRegisterBtn" class="btn btn-ghost btn-block mt-3">Tạo tài khoản mới</button>
       <div class="toolbar mt-4">
         <a href="https://zalo.me/0971810376" target="_blank" rel="noopener" class="btn btn-green btn-sm" style="flex:1"><i class="fas fa-comment-dots"></i> Zalo</a>
         <a href="https://t.me/ntt3132004" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="flex:1"><i class="fab fa-telegram-plane"></i> Telegram</a>
