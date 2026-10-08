@@ -225,6 +225,34 @@ try {
 
 cronMigrateTwofaSecrets($db);
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'register_username') {
+    cronRequireCsrf();
+
+    $username = trim((string)($_POST['username'] ?? ''));
+    if (!preg_match('/^[A-Za-z0-9_.-]{3,32}$/', $username)) {
+        $_SESSION['cron_register_error'] = 'Username phải dài 3-32 ký tự, chỉ gồm chữ cái, số, dấu chấm, gạch ngang hoặc gạch dưới.';
+        header('Location: ?');
+        exit;
+    }
+
+    try {
+        $hash = password_hash($username, PASSWORD_DEFAULT);
+        $st = $db->prepare('INSERT INTO cron_users (code, code_hash, name, twofa_enabled, created_at) VALUES (?, ?, ?, 0, ?)');
+        $st->execute([$username, $hash, $username, date('Y-m-d H:i:s')]);
+        $uid = (int)$db->lastInsertId();
+
+        session_regenerate_id(true);
+        $_SESSION['cron_uid'] = $uid;
+        $_SESSION['cron_uname'] = $username;
+        header('Location: ?');
+        exit;
+    } catch (PDOException $e) {
+        $_SESSION['cron_register_error'] = 'Username đã tồn tại hoặc không thể tạo tài khoản.';
+        header('Location: ?');
+        exit;
+    }
+}
+
 if (isset($_POST['login_code'])) {
     cronRequireCsrf();
     if (cronLoginBlocked()) {
@@ -420,11 +448,28 @@ ob_start(); ?>
     <form method="POST" class="space-y-4">
       <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
       <div class="field">
-        <label>Mã đăng nhập</label>
-        <input type="password" name="login_code" required placeholder="Nhập mã truy cập..." class="input" autocomplete="off">
+        <label>Username</label>
+        <input type="text" name="login_code" required placeholder="Nhập username..." class="input" autocomplete="username">
       </div>
       <button type="submit" class="btn btn-primary btn-block">
         <i class="fas fa-right-to-bracket"></i> Đăng nhập
+      </button>
+    </form>
+
+    <?php if (!empty($_SESSION['cron_register_error'])): ?>
+      <div class="alert alert-error mb-4"><?= e($_SESSION['cron_register_error']) ?></div>
+      <?php unset($_SESSION['cron_register_error']); ?>
+    <?php endif; ?>
+
+    <form method="POST" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
+      <input type="hidden" name="action" value="register_username">
+      <div class="field">
+        <label>Tạo tài khoản bằng username</label>
+        <input type="text" name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.-]{3,32}" placeholder="Ví dụ: user123" class="input" autocomplete="username">
+      </div>
+      <button type="submit" class="btn btn-secondary btn-block">
+        <i class="fas fa-user-plus"></i> Tạo tài khoản
       </button>
     </form>
 
@@ -432,8 +477,8 @@ ob_start(); ?>
       <div class="flex items-start gap-3">
         <div class="tool-icon blue" style="width:2.5rem;height:2.5rem;font-size:1rem"><i class="fas fa-circle-info"></i></div>
         <div>
-          <p class="text-sm font-semibold text-white m-0">Cần tạo tài khoản?</p>
-          <p class="text-xs text-text-muted mt-1 mb-0">Liên hệ admin để được cấp mã truy cập. Chức năng này miễn phí.</p>
+          <p class="text-sm font-semibold text-white m-0">Đăng ký hoặc đăng nhập bằng username</p>
+          <p class="text-xs text-text-muted mt-1 mb-0">Tài khoản mới chỉ cần username, không cần mật khẩu.</p>
         </div>
       </div>
       <div class="toolbar mt-4">
