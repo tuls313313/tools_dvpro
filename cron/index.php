@@ -160,12 +160,11 @@ function cronFetchTasks(PDO $db, int $uid): array
     $st = $db->prepare(
         "SELECT t.*,l.status AS last_status,l.started_at AS last_started_at,l.finished_at AS last_finished_at
          FROM cron_tasks t
-         LEFT JOIN (
-           SELECT cl.*
+         LEFT JOIN cron_logs l ON l.id=(
+           SELECT MAX(cl.id)
            FROM cron_logs cl
-           INNER JOIN (SELECT task_id, MAX(id) AS last_id FROM cron_logs GROUP BY task_id) latest
-             ON latest.task_id=cl.task_id AND latest.last_id=cl.id
-         ) l ON l.task_id=t.id
+           WHERE cl.task_id=t.id
+         )
          WHERE t.user_id=?
          ORDER BY t.id DESC"
     );
@@ -264,13 +263,21 @@ if (isset($_POST['login_code'])) {
     $code = trim((string)$_POST['login_code']);
     $u = null;
     if ($code !== '' && strlen($code) <= 128) {
-        $users = $db->query("SELECT id,code,code_hash,name,twofa_secret,twofa_enabled FROM cron_users")->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($users as $candidate) {
-            $hash = (string)($candidate['code_hash'] ?? '');
-            // Production: only hashed login codes are accepted.
-            if ($hash !== '' && password_verify($code, $hash)) {
-                $u = $candidate;
-                break;
+        $st = $db->prepare("SELECT id,code,code_hash,name,twofa_secret,twofa_enabled FROM cron_users WHERE code=? LIMIT 1");
+        $st->execute([$code]);
+        $candidate = $st->fetch(PDO::FETCH_ASSOC);
+
+        if ($candidate && password_verify($code, (string)($candidate['code_hash'] ?? ''))) {
+            $u = $candidate;
+        } elseif (!$candidate) {
+            // Keep compatibility with legacy accounts whose login code is not the username.
+            $users = $db->query("SELECT id,code,code_hash,name,twofa_secret,twofa_enabled FROM cron_users")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($users as $legacyCandidate) {
+                $hash = (string)($legacyCandidate['code_hash'] ?? '');
+                if ($hash !== '' && password_verify($code, $hash)) {
+                    $u = $legacyCandidate;
+                    break;
+                }
             }
         }
     }
@@ -723,9 +730,9 @@ exit;
 
             $tid = (int)$_GET['task_id'];
 
-            $st = $db->prepare("SELECT id,status,http_code,response_body,error_msg,duration_ms,started_at,finished_at FROM cron_logs WHERE task_id=? AND task_id IN(SELECT id FROM cron_tasks WHERE id=? AND user_id=?) ORDER BY id DESC LIMIT 20");
+            $st = $db->prepare("SELECT l.id,l.status,l.http_code,l.response_body,l.error_msg,l.duration_ms,l.started_at,l.finished_at FROM cron_logs l INNER JOIN cron_tasks t ON t.id=l.task_id WHERE l.task_id=? AND t.user_id=? ORDER BY l.id DESC LIMIT 20");
 
-            $st->execute([$tid, $tid, $uid]);
+            $st->execute([$tid, $uid]);
 
             header('Content-Type: application/json');
 
