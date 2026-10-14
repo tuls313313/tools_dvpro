@@ -161,12 +161,11 @@ function cronLoadActiveTasks(PDO $db): array
   return $db->query(
     "SELECT t.*,l.status AS last_status,l.started_at AS last_started_at,l.finished_at AS last_finished_at
      FROM cron_tasks t
-     LEFT JOIN (
-       SELECT cl.*
+     LEFT JOIN cron_logs l ON l.id=(
+       SELECT MAX(cl.id)
        FROM cron_logs cl
-       INNER JOIN (SELECT task_id, MAX(id) AS last_id FROM cron_logs GROUP BY task_id) latest
-         ON latest.task_id=cl.task_id AND latest.last_id=cl.id
-     ) l ON l.task_id=t.id
+       WHERE cl.task_id=t.id
+     )
      WHERE t.is_active=1
      ORDER BY t.id"
   )->fetchAll(PDO::FETCH_ASSOC);

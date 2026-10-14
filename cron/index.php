@@ -172,6 +172,24 @@ function cronFetchTasks(PDO $db, int $uid): array
     return $st->fetchAll(PDO::FETCH_ASSOC);
 }
 
+function cronFetchTaskStatus(PDO $db, int $uid): array
+{
+    $st = $db->prepare(
+        "SELECT t.id,t.is_active,t.interval_seconds,
+                l.status AS last_status,l.started_at AS last_started_at,l.finished_at AS last_finished_at
+         FROM cron_tasks t
+         LEFT JOIN cron_logs l ON l.id=(
+           SELECT MAX(cl.id)
+           FROM cron_logs cl
+           WHERE cl.task_id=t.id
+         )
+         WHERE t.user_id=?
+         ORDER BY t.id DESC"
+    );
+    $st->execute([$uid]);
+    return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
 function cronTaskTiming(array $task, ?int $now = null): array
 {
     $now = $now ?? time();
@@ -747,7 +765,7 @@ exit;
                 session_write_close();
             }
 
-            $statusTasks = cronFetchTasks($db, $uid);
+            $statusTasks = cronFetchTaskStatus($db, $uid);
             $items = [];
             $active = 0;
             $now = time();
