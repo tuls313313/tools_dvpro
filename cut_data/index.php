@@ -13,61 +13,55 @@ secureSessionStart();
 $result = '';
 $error  = '';
 
+function cutDataTransform(array $input): array
+{
+    $raw = str_replace("\r\n", "\n", (string)($input['data'] ?? ''));
+    $lines = array_filter(array_map('trim', explode("\n", trim($raw))), fn($v) => $v !== '');
+    $delimiterInput = (string)($input['delimiter'] ?? '|');
+    $delimiterInput = $delimiterInput === '' ? '|' : $delimiterInput;
+    $delimiter = (strtolower($delimiterInput) === 'tab' || $delimiterInput === '\\t') ? "\t" : $delimiterInput;
+    $cutType = (($input['cut_type'] ?? 'range') === 'list') ? 'list' : 'range';
+    if (!empty($input['dedupe'])) {
+        $lines = array_values(array_unique($lines));
+    }
+    $start = max(1, (int)($input['start'] ?? 1)) - 1;
+    $end = max($start, (int)($input['end'] ?? 1)) - 1;
+    preg_match_all('/\d+/', (string)($input['list'] ?? ''), $matches);
+    $indexes = array_map('intval', $matches[0] ?? []);
+    $output = [];
+    foreach ($lines as $line) {
+        $parts = explode($delimiter, $line);
+        if ($cutType === 'range') {
+            $output[] = implode($delimiter, array_slice($parts, $start, $end - $start + 1));
+            continue;
+        }
+        $picked = [];
+        foreach ($indexes as $index) {
+            $index--;
+            if ($index >= 0 && array_key_exists($index, $parts)) {
+                $picked[] = $parts[$index];
+            }
+        }
+        $output[] = implode($delimiter, $picked);
+    }
+    return ['result' => implode("\n", $output), 'input_lines' => count($lines), 'result_lines' => count($output)];
+}
+
+if (isset($_POST['ajax']) && $_POST['ajax'] === '1') {
+    dvproRequireCsrf();
+    $processed = cutDataTransform($_POST);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['status' => true] + $processed, JSON_UNESCAPED_UNICODE);
+    exit;
+}
 if (isset($_POST['trigger']) || isset($_POST['download'])) {
     dvproRequireCsrf();
 }
 
-if (isset($_POST['trigger'])) {
-    $raw = (string)($_POST['data'] ?? '');
-    $raw = str_replace("\r\n", "\n", $raw);
+if (isset($_POST['trigger']) || isset($_POST['download'])) {
+    $processed = cutDataTransform($_POST);
+    $result = $processed['result'];
 
-    $lines = array_filter(array_map('trim', explode("\n", trim($raw))), fn($v) => $v !== '');
-
-    // delimiter: cho phép "\t" hoặc "TAB"
-    $delimiterInput = (string)($_POST['delimiter'] ?? '|');
-    $delimiterInput = $delimiterInput === '' ? '|' : $delimiterInput;
-
-    $delimiter = $delimiterInput;
-    if (strtolower($delimiterInput) === 'tab' || $delimiterInput === '\t') {
-        $delimiter = "\t";
-    }
-
-    $cutType = (($_POST['cut_type'] ?? 'range') === 'list') ? 'list' : 'range';
-
-    if (!empty($_POST['dedupe'])) {
-        $lines = array_values(array_unique($lines));
-    }
-
-    $output = [];
-
-    foreach ($lines as $line) {
-        $parts = explode($delimiter, $line);
-
-        if ($cutType === 'range') {
-            $start = max(1, (int)($_POST['start'] ?? 1)) - 1;
-            $end   = max($start, (int)($_POST['end'] ?? 1)) - 1;
-
-            $slice = array_slice($parts, $start, $end - $start + 1);
-            $output[] = implode($delimiter, $slice);
-        } else {
-            $listRaw = (string)($_POST['list'] ?? '');
-            preg_match_all('/\d+/', $listRaw, $m);
-            $indexes = array_map('intval', $m[0] ?? []);
-
-            $picked = [];
-            foreach ($indexes as $i) {
-                $idx = $i - 1;
-                if ($idx >= 0 && array_key_exists($idx, $parts)) {
-                    $picked[] = $parts[$idx];
-                }
-            }
-            $output[] = implode($delimiter, $picked);
-        }
-    }
-
-    $result = implode("\n", $output);
-
-    // download
     if (isset($_POST['download']) && $result !== '') {
         header('Content-Type: text/plain; charset=utf-8');
         header('Content-Disposition: attachment; filename="cut-result.txt"');
@@ -75,7 +69,6 @@ if (isset($_POST['trigger'])) {
         exit;
     }
 }
-
 $title = "Công cụ cắt dữ liệu";
 $description = "Cắt dữ liệu theo delimiter: lấy cột từ x → y hoặc theo danh sách cột, loại dòng trùng, copy và download kết quả.";
 
@@ -107,12 +100,12 @@ ob_start();
       </div>
     </div>
     <div class="tool-hero-actions">
-      <span class="pill pill-slate"><i class="fa-regular fa-file-lines"></i> Input: <b><?= (int)$inputLines ?></b> dòng</span>
-      <span class="pill pill-blue"><i class="fa-regular fa-circle-check"></i> Output: <b><?= (int)$resultLines ?></b> dòng</span>
+      <span class="pill pill-slate"><i class="fa-regular fa-file-lines"></i> Input: <b id="inputLineCount"><?= (int)$inputLines ?></b> dòng</span>
+      <span class="pill pill-blue"><i class="fa-regular fa-circle-check"></i> Output: <b id="resultLineCount"><?= (int)$resultLines ?></b> dòng</span>
     </div>
   </div>
 
-  <form method="post" class="tool-panel cut-panel">
+  <form method="post" id="cutForm" class="tool-panel cut-panel">
     <?= dvproCsrfField() ?>
     <div class="tool-panel-head">
       <h2><i class="fa-solid fa-sliders text-indigo-300"></i> Thiết lập</h2>
@@ -200,6 +193,61 @@ ob_start();
 </div>
 
 <script <?= function_exists('dvproNonceAttr') ? dvproNonceAttr() : '' ?>>
+var cutForm = document.getElementById('cutForm');
+var cutBusy = false;
+var cutDownload = cutForm ? cutForm.querySelector('button[name="download"]') : null;
+
+function downloadCutResult() {
+  var result = document.getElementById('resultData');
+  if (!result || !result.value) return;
+  var blob = new Blob([result.value], { type: 'text/plain;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var link = document.createElement('a');
+  link.href = url;
+  link.download = 'cut-result.txt';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+if (cutForm) {
+  cutForm.addEventListener('submit', function (event) {
+    var submitter = event.submitter;
+    if (submitter && submitter.name === 'download') {
+      if (document.getElementById('resultData').value) {
+        event.preventDefault();
+        downloadCutResult();
+      }
+      return;
+    }
+    event.preventDefault();
+    if (cutBusy) return;
+    cutBusy = true;
+    var button = submitter || cutForm.querySelector('button[name="trigger"]');
+    if (button) button.disabled = true;
+    if (cutDownload) cutDownload.disabled = true;
+    var formData = new FormData(cutForm);
+    formData.append('ajax', '1');
+    fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        if (!data || !data.status) throw new Error('Không thể xử lý dữ liệu.');
+        document.getElementById('resultData').value = data.result || '';
+         var inputCount = document.getElementById('inputLineCount');
+        var resultCount = document.getElementById('resultLineCount');
+        if (inputCount) inputCount.textContent = String(data.input_lines || 0);
+        if (resultCount) resultCount.textContent = String(data.result_lines || 0);
+       if (cutDownload) cutDownload.disabled = !data.result;
+      })
+      .catch(function (error) {
+        var box = document.getElementById('resultData');
+        if (box) box.value = 'Lỗi: ' + (error.message || 'Không thể xử lý dữ liệu.');
+      })
+      .finally(function () {
+        cutBusy = false;
+        if (button) button.disabled = false;
+      });
+  });
+}
 function copyText(id, btn) {
   var el = document.getElementById(id);
   if (!el) return;
