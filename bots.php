@@ -18,7 +18,7 @@ $content = <<<'HTML'
       <p>Theo dõi kênh YouTube tự động và nhận thông báo video mới ngay trên Telegram.</p>
       <div class="meta"><span class="pill pill-green"><i class="fas fa-circle text-[8px]"></i> Đang hoạt động</span><span>Chi tiết <i class="fas fa-arrow-right"></i></span></div>
     </a>
-    <div class="tool-card" class="is-disabled-card">
+    <div class="tool-card is-disabled-card">
       <div class="icon icon-grad-plus"><i class="fas fa-plus"></i></div>
       <h3>Bot sắp ra mắt</h3>
       <p>Các bot mới cho mạng xã hội sẽ được cập nhật tại đây.</p>

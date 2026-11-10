@@ -83,11 +83,11 @@ $content = <<<'HTML'
   __DVPRO_CSRF_FIELD__
       <div class="tool-grid-2">
         <div class="field">
-          <label>Service (tuỳ chọn)</label>
+          <label for="service">Service (tuỳ chọn)</label>
           <input id="service" name="service" class="input" placeholder="VD: buff, view, like...">
         </div>
         <div class="field">
-          <label>Chế độ xuất</label>
+          <label for="mode">Chế độ xuất</label>
           <select id="mode" name="mode" class="input">
             <option value="link">Chỉ link</option>
             <option value="full">Link|số lượng</option>
@@ -97,17 +97,17 @@ $content = <<<'HTML'
       </div>
 
       <div class="field">
-        <label>Nhập nhiều link (mỗi dòng 1 link)</label>
+        <label for="link">Nhập nhiều link (mỗi dòng 1 link)</label>
         <textarea id="link" name="link" class="textarea" rows="8" placeholder="https://..."></textarea>
       </div>
 
       <div class="tool-grid-2">
         <div class="field">
-          <label>Số lượng mỗi dòng</label>
+          <label for="per_link">Số lượng mỗi dòng</label>
           <input id="per_link" name="per_link" type="number" min="1" class="input" placeholder="VD: 100">
         </div>
         <div class="field">
-          <label>Tổng số lượng</label>
+          <label for="total">Tổng số lượng</label>
           <input id="total" name="total" type="number" min="1" class="input" placeholder="VD: 1000">
         </div>
       </div>
@@ -144,7 +144,7 @@ document.getElementById('toolForm').addEventListener('submit', async function(e)
             <button type="button" class="btn btn-sm btn-secondary" data-action="copy-result" data-target="resultOut"><i class="fas fa-copy"></i> Copy</button>
           </div>
         </div>
-        <textarea id="resultOut" class="result-box" rows="12">${data.result || ''}</textarea>
+        <textarea aria-label="Kết quả chia link" id="resultOut" class="result-box" rows="12">${data.result || ''}</textarea>
       </div>`;
   } catch (err) {
     box.innerHTML = '<div class="alert alert-error">Không kết nối được server</div>';

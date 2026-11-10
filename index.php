@@ -7,7 +7,7 @@ $content = <<<'HTML'
 <div class="page-wrap">
   <section class="hero mb-6 md:mb-8">
     <div class="hero-kicker">
-      <i class="fas fa-sparkles"></i>
+      <i class="fas fa-wand-magic-sparkles"></i>
       Nền tảng tools miễn phí cho dịch vụ số
     </div>
     <h1>Làm việc nhanh hơn với <span>DVPro Tools</span></h1>

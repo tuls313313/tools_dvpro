@@ -23,7 +23,7 @@ $content = <<<'HTML'
       <span class="pill pill-slate">Mỗi username 1 dòng</span>
     </div>
 
-    <textarea id="usernameInput" class="textarea pretty-scroll ig-input" rows="9" spellcheck="false" placeholder="abc123
+    <textarea aria-label="Danh sách username Instagram" id="usernameInput" class="textarea pretty-scroll ig-input" rows="9" spellcheck="false" placeholder="abc123
 xyz_ig
 user_name..."></textarea>
 
@@ -53,7 +53,7 @@ user_name..."></textarea>
         <h2 class="text-pink-300"><i class="fas fa-check-circle"></i> Live <span class="pill pill-pink">(<span id="liveCount2">0</span>)</span></h2>
         <button data-action="copy-text" data-target="liveBox" id="copyLiveBtn" type="button" class="btn btn-secondary btn-sm"><i class="fas fa-copy"></i> Copy</button>
       </div>
-      <textarea id="liveBox" readonly class="textarea pretty-scroll checker-result-box ig-box live" rows="14" placeholder="Username LIVE sẽ hiện ở đây..."></textarea>
+      <textarea aria-label="Kết quả Instagram LIVE" id="liveBox" readonly class="textarea pretty-scroll checker-result-box ig-box live" rows="14" placeholder="Username LIVE sẽ hiện ở đây..."></textarea>
     </section>
 
     <section class="tool-panel checker-result ig-result die">
@@ -61,7 +61,7 @@ user_name..."></textarea>
         <h2 class="text-red-300"><i class="fas fa-times-circle"></i> Die <span class="pill pill-red">(<span id="dieCount2">0</span>)</span></h2>
         <button data-action="copy-text" data-target="dieBox" id="copyDieBtn" type="button" class="btn btn-secondary btn-sm"><i class="fas fa-copy"></i> Copy</button>
       </div>
-      <textarea id="dieBox" readonly class="textarea pretty-scroll checker-result-box ig-box die" rows="14" placeholder="Username DIE sẽ hiện ở đây..."></textarea>
+      <textarea aria-label="Kết quả Instagram DIE" id="dieBox" readonly class="textarea pretty-scroll checker-result-box ig-box die" rows="14" placeholder="Username DIE sẽ hiện ở đây..."></textarea>
     </section>
   </div>
   <div id="toast" class="tt-toast"></div>

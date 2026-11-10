@@ -11,11 +11,18 @@
       menu.classList.toggle("open",open);
       if(open){menu.removeAttribute("hidden")}else{menu.setAttribute("hidden","")}
       btn.setAttribute("aria-expanded",open?"true":"false");
+      btn.setAttribute("aria-label",open?"Đóng menu":"Mở menu");
       document.body.classList.toggle("menu-open",open);
       if(icon){icon.classList.toggle("fa-bars",!open);icon.classList.toggle("fa-times",open)}
     }
     btn.addEventListener("click",function(){setOpen(!menu.classList.contains("open"))});
     qsa("a",menu).forEach(function(a){a.addEventListener("click",function(){setOpen(false)})});
+    document.addEventListener("keydown",function(e){
+      if(e.key==="Escape"&&menu.classList.contains("open")){setOpen(false);btn.focus()}
+    });
+    document.addEventListener("click",function(e){
+      if(menu.classList.contains("open")&&!e.target.closest(".nav-shell"))setOpen(false);
+    });
     window.addEventListener("resize",function(){if(window.innerWidth>=768)setOpen(false)});
   }
 

@@ -124,7 +124,7 @@ ob_start();
             <button type="button" class="btn btn-secondary btn-sm" data-action="clear-input" data-target="inputData"><i class="fa-solid fa-broom"></i> Xoá</button>
           </div>
         </div>
-        <textarea id="inputData" name="data" class="textarea pretty-scroll cut-area" rows="14" spellcheck="false" placeholder="DAAAAE|user1|pass1"><?= htmlspecialchars($dataValue, ENT_QUOTES, 'UTF-8') ?></textarea>
+        <textarea aria-label="Dữ liệu đầu vào" id="inputData" name="data" class="textarea pretty-scroll cut-area" rows="14" spellcheck="false" placeholder="DAAAAE|user1|pass1"><?= htmlspecialchars($dataValue, ENT_QUOTES, 'UTF-8') ?></textarea>
       </section>
 
       <section class="cut-box">
@@ -135,7 +135,7 @@ ob_start();
             <button type="submit" name="download" value="1" class="btn btn-primary btn-sm" <?= $resultValue === '' ? 'disabled' : '' ?>><i class="fa-solid fa-download"></i> Download</button>
           </div>
         </div>
-        <textarea id="resultData" class="textarea pretty-scroll cut-area" rows="14" readonly spellcheck="false" placeholder="Kết quả sẽ hiện ở đây..."><?= htmlspecialchars($resultValue, ENT_QUOTES, 'UTF-8') ?></textarea>
+        <textarea aria-label="Kết quả cắt dữ liệu" id="resultData" class="textarea pretty-scroll cut-area" rows="14" readonly spellcheck="false" placeholder="Kết quả sẽ hiện ở đây..."><?= htmlspecialchars($resultValue, ENT_QUOTES, 'UTF-8') ?></textarea>
       </section>
     </div>
 

@@ -5,6 +5,7 @@ date_default_timezone_set((string) dvproEnv('APP_TIMEZONE', 'Asia/Ho_Chi_Minh'))
 require_once __DIR__ . '/models/TiktokModel.php';
 
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     respond(405, ['status' => false, 'message' => 'Method not allowed']);
 }
@@ -74,42 +75,26 @@ function set_die_streak(string $ip, int $count): void {
 }
 
 function ua_spam_check(string $ip, string $ua): void {
-
-    // chỉ bắt Chrome
     if (!preg_match('/Chrome\/([\d\.]+)/', $ua, $m)) {
         return;
     }
 
-    $chromeVersion = $m[1];
-
-    // fingerprint theo version Chrome
-    $uaKey = 'chrome_' . $chromeVersion;
-
-    $bucket = floor(time() / (int)dvproEnv('TIKTOK_UA_FINGERPRINT_TTL', '60'));
-    $cacheKey = 'tiktok:ua:' . hash('sha256', $uaKey . ':' . $bucket);
+    $ttl = max(1, (int)dvproEnv('TIKTOK_UA_FINGERPRINT_TTL', '60'));
+    $bucket = (int)floor(time() / $ttl);
+    // Track IP changes within this session; Chrome versions are shared by unrelated visitors.
+    $cacheKey = 'tiktok:ua:' . hash('sha256', 'session:' . session_id() . ':' . $bucket);
     $data = dvproCacheGet($cacheKey);
-    $data = is_array($data)
-        ? $data
-        : [
-            "ips" => [],
-            "count" => 0
-        ];
+    $ips = is_array($data) && is_array($data['ips'] ?? null) ? $data['ips'] : [];
+    $ips[$ip] = true;
+    dvproCacheSet($cacheKey, ['ips' => $ips], $ttl);
 
-    $data["count"]++;
-    $data["ips"][$ip] = true;
-
-    dvproCacheSet($cacheKey, $data, (int)dvproEnv('TIKTOK_UA_FINGERPRINT_TTL', '60'));
-
-    $uniqueIps = count($data["ips"]);
-
-    // cùng Chrome mà đổi quá nhiều IP trong 1 phút => block UA đó
-    if ($uniqueIps >= (int)dvproEnv('TIKTOK_UA_MAX_IPS', '5')
-        || $data["count"] >= (int)dvproEnv('TIKTOK_UA_MAX_REQUESTS', '30')) {
+    if (count($ips) >= (int)dvproEnv('TIKTOK_UA_MAX_IPS', '5')) {
         respond(403, [
             "status" => "BLOCKED",
-            "message" => "UA rotating IP blocked",
-            "chrome" => $chromeVersion,
-            "unique_ips" => $uniqueIps
+            "message" => "Phiên truy cập dùng quá nhiều IP. Vui lòng thử lại sau.",
+            "chrome" => $m[1],
+            "unique_ips" => count($ips),
+            "retry_after" => $ttl - (time() % $ttl)
         ]);
     }
 }
@@ -152,11 +137,10 @@ if (is_blocked_ip($ip)) {
 
 
 if ($streak >= $MAX_DIE) {
-    respond(200, [
-        "status" => "DIE",
-        "blocked" => true,
-        "message" => "Spam die",
-        "checked_at" => date('Y-m-d H:i:s')
+    respond(429, [
+        "status" => "BLOCKED",
+        "message" => "Tạm dừng do nhiều kết quả DIE liên tiếp. Vui lòng thử lại sau.",
+        "retry_after" => (int)dvproEnv('TIKTOK_DIE_STREAK_TTL', '60')
     ]);
 }
 
@@ -168,7 +152,8 @@ $maxUsernameLength = max(2, min(64, (int)dvproEnv('TIKTOK_USERNAME_MAX_LENGTH', 
 if ($username === '' || !preg_match('/^[a-zA-Z0-9._]{2,' . $maxUsernameLength . '}$/', $username)) {
     respond(400, [
         "status" => "INVALID",
-        "username" => $username
+        "username" => $username,
+        "message" => "Username không hợp lệ."
     ]);
 }
 
@@ -177,10 +162,19 @@ rate_limit_or_die("ip_user:" . $ip . ":" . strtolower($username), (int)dvproEnv(
 // ===== LOG =====
 log_request($username, $ip);
 
+require_once dirname(__DIR__) . '/check_video_tiktok/php/CacheMaintenance.php';
+TiktokCacheMaintenance::run();
+
 // ===== CACHE =====
 $cacheKey = 'tiktok:result:' . hash('sha256', strtolower($username));
-$cached = dvproCacheGet($cacheKey);
-if (is_array($cached)) {
+// Recheck bypasses result cache while keeping all existing rate limits.
+$force = ($_POST['force'] ?? '') === '1';
+$cached = $force ? null : dvproCacheGet($cacheKey);
+if (is_array($cached) && in_array($cached['status'] ?? '', ['LIVE', 'DIE'], true)
+    && in_array($cached['source'] ?? '', ['direct', 'api'], true)
+    && empty($cached['blocked'])
+    && ($cached['status'] !== 'DIE' || $cached['source'] !== 'api'
+        || in_array($cached['tiktok_status_code'] ?? null, [10202, '10202'], true))) {
     echo json_encode($cached, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -196,7 +190,10 @@ try {
     $model = new TiktokModel();
     $result = $model->checkUsername($username);
 
-    $status = strtoupper($result['status'] ?? 'DIE');
+    $status = strtoupper((string)($result['status'] ?? ''));
+    if (!in_array($status, ['LIVE', 'DIE'], true) || !empty($result['blocked'])) {
+        throw new RuntimeException('Nguồn kiểm tra chưa trả kết quả LIVE/DIE hợp lệ.');
+    }
 
     // ===== UPDATE STREAK =====
     if ($status === 'DIE') {
@@ -211,20 +208,27 @@ try {
         "checked_at" => date('Y-m-d H:i:s')
     ];
 
-    foreach (["avatar","nickname","followers","following","videos","likes","check_time","create_time"] as $k) {
-        if (isset($result[$k])) $out[$k] = $result[$k];
+    foreach (["avatar","nickname","followers","following","videos","likes","private","check_time","create_time","source","message","tiktok_status_code"] as $k) {
+        if (array_key_exists($k, $result)) $out[$k] = $result[$k];
     }
 
     $json = json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-    dvproCacheSet($cacheKey, $out, (int)dvproEnv('TIKTOK_CACHE_TTL', '30'));
+    dvproCacheSet($cacheKey, $out, max(1, (int)dvproEnv('TIKTOK_CACHE_TTL', '15')));
 
     echo $json;
     exit;
 
 } catch (Throwable $e) {
-    respond(502, [
-        "status" => "DIE",
-        "message" => "API lỗi"
+    dvproLog('tiktok', 'error', 'Username lookup failed', [
+        'username' => $username,
+        'error' => $e->getMessage()
+    ]);
+    respond($e instanceof UnexpectedValueException ? 200 : 502, [
+        "status" => "ERROR",
+        "username" => $username,
+        "message" => $e instanceof UnexpectedValueException
+            ? $e->getMessage()
+            : "Chưa lấy được kết quả từ TikTok/API. Vui lòng Recheck."
     ]);
 }

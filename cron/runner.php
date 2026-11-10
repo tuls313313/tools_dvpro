@@ -146,7 +146,12 @@ function cronRunTask(PDO $db, array $task, bool $force = false)
     curl_close($ch);
 
     $duration = round((microtime(true) - $start) * 1000);
-    $status = ($httpCode >= 200 && $httpCode < 400) ? 'success' : 'error';
+    $json = json_decode((string) ($body ?? ''), true);
+    $message = is_array($json) ? strtolower(trim((string) ($json['message'] ?? ''))) : '';
+    $queued = is_array($json) && (int) ($json['status'] ?? 0) === 202
+      && in_array($message, ['cron queued', 'cron already queued'], true);
+    $queuedExisting = $queued && $message === 'cron already queued';
+    $status = $queuedExisting ? 'queued_existing' : ($queued ? 'queued' : (($httpCode >= 200 && $httpCode < 400) ? 'success' : 'error'));
     $bodyStored = mb_substr($body ?? '', 0, 500);
     $st = $db->prepare("UPDATE cron_logs SET status=?,http_code=?,response_body=?,error_msg=?,finished_at=?,duration_ms=? WHERE id=?");
     $st->execute([$status, $httpCode, $bodyStored, $error ?: null, date('Y-m-d H:i:s'), $duration, $logId]);

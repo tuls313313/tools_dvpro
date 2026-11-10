@@ -23,7 +23,7 @@ $content = <<<'HTML'
       <span class="pill pill-slate">Mỗi UID 1 dòng</span>
     </div>
 
-    <textarea id="input" class="textarea pretty-scroll fbuid-input" rows="9" spellcheck="false" placeholder="mỗi uid 1 dòng
+    <textarea aria-label="Danh sách UID Facebook" id="input" class="textarea pretty-scroll fbuid-input" rows="9" spellcheck="false" placeholder="mỗi uid 1 dòng
 61583769256099
 61585956545220
 61586188493685"></textarea>
@@ -57,7 +57,7 @@ $content = <<<'HTML'
         <h2 class="text-green-300"><i class="fas fa-check-circle"></i> Live <span class="pill pill-green">(<span id="liveCount2">0</span>)</span></h2>
         <button type="button" class="btn btn-secondary btn-sm" data-action="copy-text" data-target="liveBox"><i class="fa-regular fa-copy"></i> Copy</button>
       </div>
-      <textarea id="liveBox" class="textarea pretty-scroll checker-result-box fbuid-box live" rows="14" readonly placeholder="UID LIVE sẽ hiện ở đây..."></textarea>
+      <textarea aria-label="Kết quả UID Facebook LIVE" id="liveBox" class="textarea pretty-scroll checker-result-box fbuid-box live" rows="14" readonly placeholder="UID LIVE sẽ hiện ở đây..."></textarea>
     </section>
 
     <section class="tool-panel checker-result fbuid-result die">
@@ -65,7 +65,7 @@ $content = <<<'HTML'
         <h2 class="text-red-300"><i class="fas fa-times-circle"></i> Die <span class="pill pill-red">(<span id="dieCount2">0</span>)</span></h2>
         <button type="button" class="btn btn-secondary btn-sm" data-action="copy-text" data-target="dieBox"><i class="fa-regular fa-copy"></i> Copy</button>
       </div>
-      <textarea id="dieBox" class="textarea pretty-scroll checker-result-box fbuid-box die" rows="14" readonly placeholder="UID DIE sẽ hiện ở đây..."></textarea>
+      <textarea aria-label="Kết quả UID Facebook DIE" id="dieBox" class="textarea pretty-scroll checker-result-box fbuid-box die" rows="14" readonly placeholder="UID DIE sẽ hiện ở đây..."></textarea>
     </section>
   </div>
 </div>

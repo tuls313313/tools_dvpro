@@ -49,10 +49,10 @@ $jsApp = $assetUrl . 'assets/js/app.js?v=' . $assetVersion('assets/js/app.js');
 $logoImage = $logoImage ?? ($assetUrl . 'favicon.ico?v=' . $assetVersion('favicon.ico'));
 $cspNonce = dvproCspNonce();
 $nonceAttr = dvproNonceAttr();
-$isHome = ($currentPage === 'index.php' || $currentPage === '' || $requestPath === '/');
-$isTools = ($currentPage === 'tools.php');
-$isBots = ($currentPage === 'bots.php');
-$isDonate = ($currentPage === 'donate.php');
+$isHome = in_array($requestPath, ['/', '/index.php'], true);
+$isBots = ($requestPath === '/bots.php' || str_starts_with($requestPath, '/bot_ytb/'));
+$isDonate = ($requestPath === '/donate.php');
+$isTools = ($requestPath === '/tools.php' || preg_match('#^/(?:2fa|check_[^/]+|convert|cron|cut_data|link|mail)/#', $requestPath) === 1);
 $structuredData = $structuredData ?? [
     '@context' => 'https://schema.org',
     '@type' => 'WebSite',
@@ -156,6 +156,7 @@ img{max-width:100%;height:auto}
 
 </head>
 <body class="dark site-shell">
+<a href="#main-content" class="skip-link">Đến nội dung chính</a>
 <nav class="nav-shell" aria-label="Main">
   <div class="nav-inner">
     <a href="<?=$siteUrl?>" class="brand">
@@ -167,10 +168,10 @@ img{max-width:100%;height:auto}
     </a>
 
     <div class="nav-links">
-      <a href="<?=$siteUrl?>" class="nav-link <?=$isHome ? 'active' : ''?>"><i class="fas fa-house" aria-hidden="true"></i> Trang chủ</a>
-      <a href="<?=$siteUrl?>tools.php" class="nav-link <?=$isTools ? 'active' : ''?>"><i class="fas fa-toolbox" aria-hidden="true"></i> Tools</a>
-      <a href="<?=$siteUrl?>bots.php" class="nav-link <?=$isBots ? 'active' : ''?>"><i class="fas fa-robot" aria-hidden="true"></i> Bot</a>
-      <a href="<?=$siteUrl?>donate.php" class="nav-link <?=$isDonate ? 'active' : ''?>"><i class="fas fa-heart" aria-hidden="true"></i> Donate</a>
+      <a href="<?=$siteUrl?>" class="nav-link <?=$isHome ? 'active' : ''?>" <?=$isHome ? 'aria-current="page"' : ''?>><i class="fas fa-house" aria-hidden="true"></i> Trang chủ</a>
+      <a href="<?=$siteUrl?>tools.php" class="nav-link <?=$isTools ? 'active' : ''?>" <?=$isTools ? 'aria-current="page"' : ''?>><i class="fas fa-toolbox" aria-hidden="true"></i> Tools</a>
+      <a href="<?=$siteUrl?>bots.php" class="nav-link <?=$isBots ? 'active' : ''?>" <?=$isBots ? 'aria-current="page"' : ''?>><i class="fas fa-robot" aria-hidden="true"></i> Bot</a>
+      <a href="<?=$siteUrl?>donate.php" class="nav-link <?=$isDonate ? 'active' : ''?>" <?=$isDonate ? 'aria-current="page"' : ''?>><i class="fas fa-heart" aria-hidden="true"></i> Donate</a>
     </div>
 
     <a href="<?=$siteUrl?>tools.php" class="nav-cta"><i class="fas fa-bolt" aria-hidden="true"></i> Dùng ngay</a>
@@ -180,19 +181,19 @@ img{max-width:100%;height:auto}
   </div>
 
   <div id="mobile-menu" class="mobile-panel" hidden>
-    <a href="<?=$siteUrl?>" class="<?=$isHome ? 'active' : ''?>">
+    <a href="<?=$siteUrl?>" class="<?=$isHome ? 'active' : ''?>" <?=$isHome ? 'aria-current="page"' : ''?>>
       <span><i class="fas fa-house" aria-hidden="true"></i> Trang chủ</span>
       <i class="fas fa-chevron-right" aria-hidden="true"></i>
     </a>
-    <a href="<?=$siteUrl?>tools.php" class="<?=$isTools ? 'active' : ''?>">
+    <a href="<?=$siteUrl?>tools.php" class="<?=$isTools ? 'active' : ''?>" <?=$isTools ? 'aria-current="page"' : ''?>>
       <span><i class="fas fa-toolbox" aria-hidden="true"></i> Tools</span>
       <span class="badge">Free</span>
     </a>
-    <a href="<?=$siteUrl?>bots.php" class="<?=$isBots ? 'active' : ''?>">
+    <a href="<?=$siteUrl?>bots.php" class="<?=$isBots ? 'active' : ''?>" <?=$isBots ? 'aria-current="page"' : ''?>>
       <span><i class="fas fa-robot" aria-hidden="true"></i> Bot</span>
       <i class="fas fa-chevron-right" aria-hidden="true"></i>
     </a>
-    <a href="<?=$siteUrl?>donate.php" class="<?=$isDonate ? 'active' : ''?>">
+    <a href="<?=$siteUrl?>donate.php" class="<?=$isDonate ? 'active' : ''?>" <?=$isDonate ? 'aria-current="page"' : ''?>>
       <span><i class="fas fa-heart" aria-hidden="true"></i> Donate</span>
       <i class="fas fa-chevron-right" aria-hidden="true"></i>
     </a>
@@ -203,7 +204,7 @@ img{max-width:100%;height:auto}
   </div>
 </nav>
 
-<main class="site-main"><?=$content ?? ''?></main>
+<main id="main-content" class="site-main" tabindex="-1"><?=$content ?? ''?></main>
 
 <footer class="site-footer">
   <div class="footer-inner">

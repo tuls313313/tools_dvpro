@@ -36,7 +36,7 @@ $content = <<<'HTML'
       <p class="text-slate-300 mb-5">Bấm để bắt đầu sử dụng ngay trên Telegram.</p>
       <a href="https://t.me/bot_ytb_bot" target="_blank" rel="noopener" class="btn btn-primary btn-lg mb-5"><i class="fab fa-telegram-plane"></i> Mở @bot_ytb_bot</a>
       <div class="toolbar">
-        <input type="text" readonly value="@bot_ytb_bot" class="input" style="width:10rem;text-align:center">
+        <input type="text" aria-label="Tên bot Telegram" readonly value="@bot_ytb_bot" class="input" style="width:10rem;text-align:center">
         <button type="button" class="btn btn-amber" data-action="copy-value" data-value="@bot_ytb_bot"><i class="fas fa-copy"></i> Copy</button>
       </div>
     </section>

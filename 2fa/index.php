@@ -134,21 +134,21 @@ $content = <<<'HTML'
   <section class="tool-panel">
     <form id="otpForm" class="space-y-5" autocomplete="off">
       <div class="field">
-        <label>Secret (Base32)</label>
+        <label for="secret">Secret (Base32)</label>
         <input id="secret" name="secret" class="input" placeholder="VD: JBSWY3DPEHPK3PXP" />
         <div class="hint">Secret thường gồm A-Z và 2-7 (có thể có dau =, hệ thống tự bỏ).</div>
       </div>
 
       <div class="tool-grid-2">
         <div class="field">
-          <label>Digits</label>
+          <label for="digits">Digits</label>
           <select id="digits" name="digits" class="input">
             <option value="6" selected>6</option>
             <option value="8">8</option>
           </select>
         </div>
         <div class="field">
-          <label>Period (seconds)</label>
+          <label for="period">Period (seconds)</label>
           <input id="period" type="number" min="10" name="period" value="30" class="input" />
         </div>
       </div>

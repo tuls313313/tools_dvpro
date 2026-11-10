@@ -25,6 +25,7 @@ class MailController
 
         secureSessionStart();
         $csrfToken = dvproCsrfToken();
+        dvproNoStoreHeaders();
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_single'])) {
             dvproRequireCsrf();
@@ -44,7 +45,7 @@ class MailController
 .mail-page{max-width:74rem;margin:0 auto;padding:1.25rem 1rem 2rem;color:#fff}
 .mail-hero{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}
 .mail-hero-main{display:flex;align-items:flex-start;gap:.9rem}
-.mail-hero-icon{width:3.1rem;height:3.1rem;border-radius:1.05rem;display:grid;place-items:center;background:linear-gradient(135deg,#f43f5e,#e11d48);color:#fff;font-size:1.15rem;box-shadow:0 12px 28px rgba(225,29,72,.25)}
+.mail-hero-icon{flex-shrink:0;width:3.1rem;height:3.1rem;border-radius:1.05rem;display:grid;place-items:center;background:linear-gradient(135deg,#f43f5e,#e11d48);color:#fff;font-size:1.15rem;box-shadow:0 12px 28px rgba(225,29,72,.25)}
 .mail-hero h1{margin:0;font-size:clamp(1.4rem,2.5vw,1.9rem);font-weight:900;color:#fff}
 .mail-hero p{margin:.35rem 0 0;color:#94a3b8;font-size:.92rem;max-width:40rem}
 .mail-pills{display:flex;flex-wrap:wrap;gap:.5rem}
@@ -87,7 +88,6 @@ class MailController
 .mail-code{color:#34d399;font-size:.95rem;font-weight:900;cursor:pointer;white-space:nowrap}
 .mail-address{color:#fff;cursor:pointer;font-weight:800}
 .mail-address:hover{color:#38bdf8;text-decoration:underline}
-.mail-type{display:block;margin-top:4px;color:#34d399;font-size:.72rem;font-weight:800}
 .mail-actions{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:nowrap}
 .mail-icon-btn{width:32px;height:32px;border:none;border-radius:.75rem;color:#fff;font-size:13px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .mail-icon-detail{background:#7c3aed}
@@ -120,11 +120,11 @@ class MailController
       <div class="mail-hero-icon"><i class="fas fa-envelope"></i></div>
       <div>
         <h1>Đọc hộp thư / OTP</h1>
-        <p>Nhập email hoặc chuỗi account để đọc mail, lấy mã OTP và xem nội dung nhanh.</p>
+        <p>Nhập tài khoản Outlook / Hotmail để đọc thư trực tiếp từ Microsoft, lấy mã OTP và xem nội dung.</p>
       </div>
     </div>
     <div class="mail-pills">
-      <span class="mail-pill blue"><i class="fas fa-bolt"></i> Graph API</span>
+      <span class="mail-pill blue"><i class="fas fa-envelope"></i> Microsoft trực tiếp</span>
       <span class="mail-pill green"><i class="fas fa-shield-halved"></i> OAuth2</span>
     </div>
   </div>
@@ -132,28 +132,25 @@ class MailController
   <div class="mail-panel">
     <form id="mailForm">
       <div class="mail-form-row">
-        <span class="mail-label">Nhập Email / Account</span>
-        <span class="mail-check">✓</span>
-        <button type="button" class="mail-btn mail-btn-blue">Graph API</button>
-        <span class="mail-check">✓</span>
-        <button type="button" class="mail-btn mail-btn-blue">OAuth2</button>
+        <label for="accounts" class="mail-label">Nhập tài khoản · mỗi dòng một tài khoản</label>
       </div>
 
       <textarea
         class="mail-textarea"
         name="accounts"
         id="accounts"
-        placeholder="email@example.com&#10;email|refresh_token|client_id&#10;email|password|refresh_token|client_id"
+        placeholder="email|refresh_token|client_id&#10;email|password|refresh_token|client_id"
+        autocomplete="off" autocapitalize="off" spellcheck="false"
       ></textarea>
 
       <div class="mail-action">
-        <button type="submit" id="readBtn" class="mail-btn mail-btn-green"><i class="fas fa-inbox"></i> Đọc hộm thư</button>
+        <button type="submit" id="readBtn" class="mail-btn mail-btn-green"><i class="fas fa-inbox"></i> Đọc hòm thư</button>
       </div>
 
       <div id="mailError" class="mail-error" style="display:none"></div>
 
       <div id="mailLoading" class="mail-loading">
-        Đang đọc hộm thư, tối đa 5 luồng cùng lúc...
+        Đang đọc hòm thư trực tiếp từ Microsoft...
         <div id="mailProgress" class="mail-progress"></div>
       </div>
     </form>
@@ -166,11 +163,11 @@ class MailController
 
 <div id="mailModal">
     <div class="mail-modal-box">
-        <button type="button" class="mail-close-btn" data-action="close-mail-detail">×</button>
+        <button type="button" aria-label="Đóng chi tiết email" class="mail-close-btn" data-action="close-mail-detail">×</button>
         <div class="mail-modal-title">Chi tiết Email</div>
 
         <div class="mail-frame-wrap">
-           <iframe id="mailFrame" sandbox=""></iframe>
+           <iframe id="mailFrame" title="Nội dung email" sandbox=""></iframe>
         </div>
     </div>
 </div>
@@ -289,6 +286,25 @@ function runQueue(){
     }
 }
 
+async function fetchMailAccount(formData){
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), <?= (max(10, min(120, (int)dvproEnv('MAIL_TIMEOUT', '30'))) + 10) * 1000 ?>);
+    try{
+        const response = await fetch(window.location.href, {
+            method: 'POST', body: formData, signal: controller.signal,
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        });
+        const data = await response.json();
+        if(!response.ok) throw new Error(data.message || 'Không đọc được thư (HTTP ' + response.status + ')');
+        return data;
+    }catch(error){
+        if(error.name === 'AbortError') throw new Error('Hết thời gian chờ Microsoft. Vui lòng đọc lại.');
+        throw error;
+    }finally{
+        clearTimeout(timer);
+    }
+}
+
 async function readOneAccount(job){
     running++;
     updateProgress();
@@ -314,15 +330,7 @@ async function readOneAccount(job){
         formData.append('account_index', job.index);
         formData.append('stt_start', job.index);
 
-        const response = await fetch(window.location.href, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        });
-
-        const data = await response.json();
+        const data = await fetchMailAccount(formData);
 
         const currentHolder = document.getElementById('acc_result_' + job.index);
 
@@ -419,15 +427,7 @@ async function rereadMailAccount(index){
         formData.append('account_index', index);
         formData.append('stt_start', index);
 
-        const response = await fetch(window.location.href, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        });
-
-        const data = await response.json();
+        const data = await fetchMailAccount(formData);
 
         if(data.status){
             replaceMailAccountRows(index, data.html || '');
@@ -454,7 +454,8 @@ async function rereadMailAccount(index){
 }
 
 function getAccountEmail(account){
-    return String(account || '').split('|')[0] || account;
+    const email = String(account || '').split('|')[0].trim();
+    return /^[^\s@|]+@[^\s@|]+\.[^\s@|]+$/.test(email) ? email : 'Tài khoản không hợp lệ';
 }
 
 function escapeHtml(text){
@@ -679,46 +680,8 @@ document.getElementById('mailModal').addEventListener('click', function(e){
             'status' => true,
             'html' => $html,
             'email' => $box['email'] ?? $emailOnly,
-            'mailbox_mode' => $box['mailbox_mode'] ?? null,
-            'mailbox_type' => $box['mailbox_type'] ?? null,
-            'mailbox_type_label' => $box['mailbox_type_label'] ?? null,
-            'expires_at' => $box['expires_at'] ?? null,
-            'remaining_seconds' => $box['remaining_seconds'] ?? null,
-            // Sanitized metadata only (no password/token/client_id).
-            'account' => $box['account'] ?? null,
+            'source' => $box['source'] ?? null,
         ], JSON_UNESCAPED_UNICODE);
-    }
-
-    private function mailboxTypeLabel(array $box): string
-    {
-        $label = trim((string)($box['mailbox_type_label'] ?? ''));
-
-        if ($label !== '') {
-            return $label;
-        }
-
-        $mode = strtolower(trim((string)($box['mailbox_mode'] ?? '')));
-
-        if ($mode === 'permanent') {
-            return 'Email dài hạn';
-        }
-
-        if ($mode !== '') {
-            return 'Email ngắn hạn';
-        }
-
-        if (($box['expires_at'] ?? null) === null && ($box['remaining_seconds'] ?? null) === null) {
-            return 'Email dài hạn';
-        }
-
-        return 'Email ngắn hạn';
-    }
-
-    private function shouldShowMailboxType(string $email): bool
-    {
-        $email = strtolower(trim($email));
-
-        return str_ends_with($email, '@edu.evofu.com');
     }
 
     private function cleanPreview(string $subject, string $body): string
@@ -761,8 +724,6 @@ document.getElementById('mailModal').addEventListener('click', function(e){
         $email = $box['email'] ?? '';
         $messages = $box['messages'] ?? [];
         $groupId = 'mail_group_' . $accountIndex . '_' . uniqid();
-        $mailboxTypeLabel = $this->mailboxTypeLabel($box);
-        $showMailboxType = $this->shouldShowMailboxType((string)$email);
 
         if (empty($messages)):
             ?>
@@ -771,9 +732,6 @@ document.getElementById('mailModal').addEventListener('click', function(e){
                     <span class="mail-address" data-copy="<?= h($email) ?>">
                         <?= h($email) ?>
                     </span>
-                    <?php if ($showMailboxType): ?>
-                        <span class="mail-type"><?= h($mailboxTypeLabel) ?></span>
-                    <?php endif; ?>
                 </td>
                 <td><?= $accountIndex ?></td>
                 <td colspan="4"><?= h($box['error'] ?? 'Không có mail') ?></td>
@@ -824,9 +782,6 @@ document.getElementById('mailModal').addEventListener('click', function(e){
                     <span class="mail-address" data-copy="<?= h($email) ?>">
                         <?= h($email) ?>
                     </span>
-                    <?php if ($showMailboxType): ?>
-                        <span class="mail-type"><?= h($mailboxTypeLabel) ?></span>
-                    <?php endif; ?>
                 </td>
 
                 <td><?= $isFirst ? h($accountIndex) : '' ?></td>

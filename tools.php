@@ -12,7 +12,7 @@ $content = <<<'HTML'
     <div class="mt-5">
       <label class="search-box" for="tool-search">
         <i class="fas fa-magnifying-glass"></i>
-        <input id="tool-search" type="search" placeholder="Tìm tool: facebook, 2fa, mail, cron, tiktok..." autocomplete="off">
+        <input aria-label="Tìm công cụ" id="tool-search" type="search" placeholder="Tìm tool: facebook, 2fa, mail, cron, tiktok..." autocomplete="off">
       </label>
     </div>
   </section>

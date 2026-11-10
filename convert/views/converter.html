@@ -1,4 +1,4 @@
-<div class="convert-page">
+<div class="convert-page page-wrap">
     <header class="convert-header tool-hero">
         <div>
             <p class="eyebrow">Công cụ chuyển đổi JSON</p>
@@ -7,7 +7,7 @@
         <div class="privacy-note">Không lưu nội dung đầu vào</div>
     </header>
 
-    <main class="converter-grid">
+    <div class="converter-grid">
         <section class="panel input-panel">
             <div class="panel-head">
                 <div>
@@ -31,7 +31,7 @@
                 <button type="button" class="soft-btn ml-auto" data-action="call" data-fn="clearInput">Xóa</button>
             </div>
 
-            <textarea id="jsonInput" class="json-area" spellcheck="false" placeholder="Dán Session JSON tại đây..."></textarea>
+            <textarea aria-label="Session JSON cần chuyển đổi" id="jsonInput" class="json-area" spellcheck="false" placeholder="Dán Session JSON tại đây..."></textarea>
             <div id="inputStatus" class="status-line">Sẵn sàng chuyển đổi sang 9router.</div>
         </section>
 
@@ -80,7 +80,7 @@
 
             <div id="statsContainer" class="stats-line hidden"></div>
         </section>
-    </main>
+    </div>
 </div>
 
 <style>
@@ -104,7 +104,7 @@
     .convert-header h1 {
         margin: 0;
         color: #f7fbff;
-        font-size: clamp(34px, 4vw, 46px);
+        font-size: clamp(1.35rem, 2.6vw, 1.9rem);
         line-height: 1.05;
         font-weight: 850;
         letter-spacing: 0;
@@ -159,7 +159,7 @@
         margin: 0 auto;
         align-items: stretch;
     }
-    .panel,.panel {
+    .convert-page .panel {
         min-width: 0;
         border: 1px solid rgba(126, 173, 187, .24);
         border-radius: 8px;
@@ -237,7 +237,7 @@
         font-size: 13px;
         font-weight: 600;
     }
-    .output-head { align-items: center; }
+    .output-head { align-items: center; flex-wrap: wrap; }
     .thread-control {
         display: inline-flex;
         align-items: center;
@@ -445,14 +445,15 @@
         .privacy-note { white-space: normal; }
         .converter-grid { grid-template-columns: 1fr; }
         .output-head { align-items: flex-start; flex-direction: column; }
-        .json-area, .output-container { height: 340px; }
+        .json-area, .output-container { min-height: 300px; }
+        .convert-page .json-area { font-size: 16px; }
     }
 
     .converter-app { color: #e2e8f0; }
     .panel { background: linear-gradient(180deg,rgba(16,24,39,.96),rgba(12,18,32,.94)) !important; border:1px solid rgba(148,163,184,.14) !important; border-radius:1.35rem !important; box-shadow:0 22px 60px rgba(2,8,23,.48) !important; }
     .soft-btn, .primary-btn { border-radius: .9rem !important; }
     .primary-btn { background: linear-gradient(135deg,#3b82f6,#6366f1) !important; border:0 !important; }
-    .json-area, textarea { background: rgba(2,8,23,.38) !important; border:1px solid rgba(148,163,184,.14) !important; border-radius:1rem !important; color:#fff !important; }
+    .convert-page .json-area { background: rgba(2,8,23,.38) !important; border:1px solid rgba(148,163,184,.14) !important; border-radius:1rem !important; color:#fff !important; }
 </style>
 
 <script <?= function_exists('dvproNonceAttr') ? dvproNonceAttr() : '' ?>>

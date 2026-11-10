@@ -232,6 +232,54 @@ function cronFetchLogStats(PDO $db, int $uid): array
     return ['total' => (int)($stats['total'] ?? 0), 'success' => (int)($stats['success'] ?? 0)];
 }
 
+function cronBulkTasks(PDO $db, int $uid, array $ids, string $operation, ?int $interval = null): array
+{
+    if (!in_array($operation, ['start', 'pause', 'delete', 'interval'], true)
+        || !$ids || count($ids) > 500) {
+        throw new InvalidArgumentException('Chọn từ 1 đến 500 task và thao tác hợp lệ.');
+    }
+    foreach ($ids as $id) {
+        if ((!is_int($id) && !is_string($id))
+            || filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
+            throw new InvalidArgumentException('Danh sách task không hợp lệ.');
+        }
+    }
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    if ($operation === 'interval' && ($interval === null || $interval < 3 || $interval > 86400)) {
+        throw new InvalidArgumentException('Chu kỳ phải từ 3 đến 86400 giây.');
+    }
+    $marks = implode(',', array_fill(0, count($ids), '?'));
+    $params = array_merge([$uid], $ids);
+    $db->beginTransaction();
+    try {
+        $lock = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+        $st = $db->prepare("SELECT id,is_active FROM cron_tasks WHERE user_id=? AND id IN ($marks)" . $lock);
+        $st->execute($params);
+        $tasks = $st->fetchAll(PDO::FETCH_ASSOC);
+        if (count($tasks) !== count($ids)) {
+            throw new InvalidArgumentException('Có task đã bị xóa hoặc không thuộc tài khoản của bạn. Hãy tải lại danh sách.');
+        }
+        $launch = [];
+        if ($operation === 'delete') {
+            $db->prepare("DELETE FROM cron_logs WHERE task_id IN (SELECT id FROM cron_tasks WHERE user_id=? AND id IN ($marks))")->execute($params);
+            $db->prepare("DELETE FROM cron_tasks WHERE user_id=? AND id IN ($marks)")->execute($params);
+        } elseif ($operation === 'interval') {
+            $db->prepare("UPDATE cron_tasks SET interval_seconds=? WHERE user_id=? AND id IN ($marks)")->execute(array_merge([$interval], $params));
+        } else {
+            $active = $operation === 'start' ? 1 : 0;
+            $db->prepare("UPDATE cron_tasks SET is_active=? WHERE user_id=? AND id IN ($marks)")->execute(array_merge([$active], $params));
+            foreach ($tasks as $task) {
+                if ($active && empty($task['is_active'])) $launch[] = (int)$task['id'];
+            }
+        }
+        $db->commit();
+        return ['count' => count($ids), 'launch' => $launch];
+    } catch (Throwable $ex) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $ex;
+    }
+}
+
 try {
 
     $db = cronDatabase(true);
@@ -429,8 +477,8 @@ ob_start(); ?>
     <form id="twofaPendingForm" method="POST" class="space-y-4">
       <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
       <div class="field">
-        <label>Mã 2FA</label>
-        <input type="text" name="twofa_code" required inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" class="input" style="text-align:center;letter-spacing:.4em;font-weight:800;font-size:1.15rem" autocomplete="one-time-code">
+        <label for="login-twofa">Mã 2FA</label>
+        <input id="login-twofa" type="text" name="twofa_code" required inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" class="input" style="text-align:center;letter-spacing:.4em;font-weight:800;font-size:1.15rem" autocomplete="one-time-code">
       </div>
       <button id="twofaPendingSubmit" type="submit" class="btn btn-primary btn-block">
         <i class="fas fa-shield-halved"></i> Xác thực
@@ -473,8 +521,8 @@ ob_start(); ?>
     <form id="loginForm" method="POST" class="space-y-4" autocomplete="off">
       <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
       <div class="field">
-        <label>Username</label>
-        <input type="text" name="login_code" required placeholder="Nhập username..." class="input" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <label for="login-username">Username</label>
+        <input id="login-username" type="text" name="login_code" required placeholder="Nhập username..." class="input" autocomplete="off" autocapitalize="none" spellcheck="false">
       </div>
       <button type="submit" class="btn btn-primary btn-block">
         <i class="fas fa-right-to-bracket"></i> Đăng nhập
@@ -516,8 +564,8 @@ document.addEventListener('DOMContentLoaded', function () {
         <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
         <input type="hidden" name="action" value="register_username">
         <div class="field">
-          <label>Tạo tài khoản bằng username</label>
-          <input type="text" name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.-]{3,32}" placeholder="Ví dụ: user123" class="input" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <label for="register-username">Tạo tài khoản bằng username</label>
+          <input id="register-username" type="text" name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.-]{3,32}" placeholder="Ví dụ: user123" class="input" autocomplete="off" autocapitalize="none" spellcheck="false">
         </div>
         <button type="submit" class="btn btn-secondary btn-block">
           <i class="fas fa-user-plus"></i> Tạo tài khoản
@@ -551,13 +599,41 @@ exit;
 }
 
         $action = $_POST['action'] ?? $_GET['action'] ?? '';
-        $mutatingActions = ['add', 'delete', 'toggle', 'update', 'discard_2fa', 'setup_2fa', 'confirm_2fa', 'disable_2fa'];
+        $mutatingActions = ['bulk', 'add', 'delete', 'toggle', 'update', 'discard_2fa', 'setup_2fa', 'confirm_2fa', 'disable_2fa'];
         if (in_array($action, $mutatingActions, true)) {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 http_response_code(405);
                 exit('Method not allowed');
             }
             cronRequireCsrf();
+        }
+
+        if ($action === 'bulk') {
+            try {
+                $ids = $_POST['ids'] ?? [];
+                $operation = $_POST['bulk_action'] ?? '';
+                if (!is_array($ids) || !is_string($operation)) {
+                    throw new InvalidArgumentException('Yêu cầu không hợp lệ.');
+                }
+                $interval = filter_var($_POST['interval'] ?? null, FILTER_VALIDATE_INT);
+                $result = cronBulkTasks($db, $uid, $ids, $operation, $interval === false ? null : $interval);
+                $labels = ['start' => 'Đã bật', 'pause' => 'Đã dừng', 'delete' => 'Đã xóa', 'interval' => 'Đã đổi chu kỳ cho'];
+                $_SESSION['cron_flash_success'] = $labels[$operation] . ' ' . $result['count'] . ' task.';
+                $failed = 0;
+                foreach ($result['launch'] as $taskId) {
+                    if (!cronLaunchTaskProcess($taskId, true)) $failed++;
+                }
+                if ($failed) {
+                    $_SESSION['cron_flash_error'] = $failed . ' task đã bật lịch nhưng chưa khởi chạy ngay được. Hãy kiểm tra lịch sử chạy.';
+                }
+            } catch (InvalidArgumentException $ex) {
+                $_SESSION['cron_flash_error'] = $ex->getMessage();
+            } catch (Throwable $ex) {
+                error_log('Cron bulk action failed: ' . $ex->getMessage());
+                $_SESSION['cron_flash_error'] = 'Không hoàn tất được thao tác. Vui lòng kiểm tra lại danh sách trước khi thử lại.';
+            }
+            header('Location: ?');
+            exit;
         }
 
         if ($action === 'add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -839,6 +915,12 @@ exit;
         }
         ?>
 <div class="page-wrap cron-dashboard">
+  <?php foreach (['error', 'success'] as $flashType):
+      $flash = $_SESSION['cron_flash_' . $flashType] ?? '';
+      unset($_SESSION['cron_flash_' . $flashType]);
+      if ($flash !== ''): ?>
+    <div class="alert alert-<?= $flashType ?>" role="status"><?= e($flash) ?></div>
+  <?php endif; endforeach; ?>
   <div class="tool-hero">
     <div class="tool-hero-main">
       <div class="tool-icon amber"><i class="fas fa-clock"></i></div>
@@ -860,7 +942,7 @@ exit;
           <button class="btn btn-green btn-sm" type="submit"><i class="fas fa-shield-halved"></i> Bật 2FA</button>
         </form>
       <?php else: ?>
-        <form method="POST" onsubmit="return confirm('Tắt 2FA?')">
+        <form method="POST" data-cron-confirm="Tắt xác thực 2FA cho tài khoản này?">
           <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
           <input type="hidden" name="action" value="disable_2fa">
           <button class="btn btn-danger btn-sm" type="submit"><i class="fas fa-shield-halved"></i> Tắt 2FA</button>
@@ -888,120 +970,60 @@ exit;
     </div>
   </div>
 
-  <?php if (isset($editTask)): ?>
-  <section class="tool-panel mb-4" style="border-color:rgba(245,158,11,.35)">
-    <div class="tool-panel-head">
-      <h2><i class="fas fa-pen text-yellow-300"></i> Sửa task</h2>
-      <a href="?" class="btn btn-ghost btn-sm" aria-label="Đóng">&times;</a>
-    </div>
-    <form method="POST" class="cron-form-grid">
-      <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
-      <input type="hidden" name="action" value="update">
-      <input type="hidden" name="id" value="<?= (int)$editTask['id'] ?>">
-      <div class="field">
-        <label>Tên task</label>
-        <input class="input" type="text" name="name" required value="<?= e($editTask['name']) ?>">
-      </div>
-      <div class="field cron-span-2">
-        <label>URL</label>
-        <input class="input" type="url" name="url" required value="<?= e($editTask['url_decrypted']) ?>">
-      </div>
-      <div class="field">
-        <label>Chu kỳ (giây)</label>
-        <input class="input" type="number" name="interval" required min="3" value="<?= (int)$editTask['interval_seconds'] ?>">
-      </div>
-      <div class="cron-form-actions">
-        <button class="btn btn-amber" type="submit"><i class="fas fa-save"></i> Lưu</button>
-        <a class="btn btn-secondary" href="?">Hủy</a>
-      </div>
-    </form>
-  </section>
-  <?php endif; ?>
-
-  <?php if (!empty($cuser['twofa_secret']) && empty($cuser['twofa_enabled'])): ?>
-  <section class="tool-panel mb-4" style="border-color:rgba(34,197,94,.3)">
-    <div class="tool-panel-head">
-      <h2><i class="fas fa-shield-halved text-green-300"></i> Xác thực 2FA</h2>
-      <form method="POST">
-        <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
-        <input type="hidden" name="action" value="discard_2fa">
-        <button class="btn btn-ghost btn-sm" type="submit" aria-label="Đóng">&times;</button>
-      </form>
-    </div>
-    <p class="text-text-muted text-sm mb-4">Quét mã QR trong Google Authenticator hoặc nhập secret thủ công.</p>
-    <div class="cron-2fa-box">
-      <div class="note"><i class="fas fa-shield-halved"></i> Nhập secret bên dưới vào Google Authenticator (không dùng QR bên thứ 3 để tránh lộ secret).</div>
-      >
-      <div class="flex-1">
-        <div class="field mb-3">
-          <label>Secret</label>
-          <div class="toolbar">
-            <code class="input cron-secret"><?= e($cuser['twofa_secret']) ?></code>
-            <button type="button" class="btn btn-secondary btn-sm" data-action="copy-secret" data-secret="<?= e($cuser['twofa_secret']) ?>"><i class="fas fa-copy"></i></button>
-          </div>
-        </div>
-        <div id="twofaMsg" class="hidden mb-3"></div>
-        <form id="twofaForm" method="POST" class="toolbar" style="align-items:flex-end">
-          <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
-          <input type="hidden" name="action" value="confirm_2fa">
-          <div class="field" style="flex:1">
-            <label>Mã 2FA</label>
-            <input class="input" type="text" name="code" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" style="text-align:center;letter-spacing:.35em;font-weight:800">
-          </div>
-          <button class="btn btn-green" type="submit"><i class="fas fa-check"></i> Xác nhận</button>
-        </form>
-      </div>
-    </div>
-  </section>
-  <?php endif; ?>
-
-  <section class="tool-panel mb-4">
-    <div class="tool-panel-head">
-      <h2><i class="fas fa-plus text-blue-300"></i> Thêm task mới</h2>
-      <span class="pill pill-blue">Create</span>
-    </div>
-    <form method="POST" class="cron-form-grid">
-      <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
-      <input type="hidden" name="action" value="add">
-      <div class="field">
-        <label>Tên task</label>
-        <input class="input" type="text" name="name" required placeholder="VD: check-status">
-      </div>
-      <div class="field cron-span-2">
-        <label>URL cần gọi</label>
-        <input class="input" type="url" name="url" required placeholder="https://example.com/job">
-      </div>
-      <div class="field">
-        <label>Chu kỳ (giây)</label>
-        <input class="input" type="number" name="interval" required min="3" value="60">
-      </div>
-      <div class="cron-form-actions">
-        <button class="btn btn-primary" type="submit"><i class="fas fa-plus"></i> Thêm task</button>
-      </div>
-    </form>
-  </section>
-
   <section class="tool-panel cron-list-panel">
     <div class="tool-panel-head cron-list-head">
       <h2><i class="fas fa-list text-cyan-300"></i> Danh sách task</h2>
-      <span class="pill pill-slate"><?= (int)$taskCnt ?> task</span>
+      <div class="cron-list-head-actions">
+        <span class="pill pill-slate" id="cronVisibleCount"><?= (int)$taskCnt ?> task</span>
+        <button type="button" class="btn btn-primary btn-sm" id="cronAddTask"><i class="fas fa-plus"></i> Thêm task</button>
+      </div>
     </div>
 
     <?php if (empty($tasks)): ?>
       <div class="cron-empty">
         <i class="fas fa-inbox"></i>
-        <div>Chưa có task nào. Hãy thêm task đầu tiên ở form phía trên.</div>
+        <div>Chưa có task nào. Bấm “Thêm task” để tạo task đầu tiên.</div>
       </div>
     <?php else: ?>
-      <div class="table-wrap cron-table-wrap">
+      <div class="cron-list-tools">
+        <div class="cron-filters">
+          <input class="input" type="search" id="cronSearch" placeholder="Tìm tên, URL, ID..." aria-label="Tìm task theo tên, URL hoặc ID">
+          <select class="input" id="cronStatusFilter" aria-label="Lọc trạng thái task">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="1">Đang bật</option>
+            <option value="0">Tạm dừng</option>
+          </select>
+        </div>
+        <form method="POST" id="cronBulkForm" class="cron-bulk-form" novalidate>
+          <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
+          <input type="hidden" name="action" value="bulk">
+          <div class="cron-selection">
+            <strong id="cronSelectedCount" aria-live="polite">Đã chọn 0</strong>
+            <button type="button" class="btn btn-ghost btn-sm" id="cronClearSelection" disabled>Bỏ chọn</button>
+          </div>
+          <div class="cron-bulk-actions">
+            <button class="btn btn-green btn-sm" name="bulk_action" value="start" disabled><i class="fas fa-play"></i> Chạy</button>
+            <button class="btn btn-secondary btn-sm" name="bulk_action" value="pause" disabled><i class="fas fa-pause"></i> Dừng</button>
+            <button class="btn btn-danger btn-sm" name="bulk_action" value="delete" disabled><i class="fas fa-trash"></i> Xóa</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="cronCopyUrls" disabled><i class="fas fa-copy"></i> Copy URL</button>
+            <div class="cron-bulk-interval">
+              <input class="input" type="number" name="interval" id="cronBulkInterval" min="3" max="86400" placeholder="Giây" aria-label="Chu kỳ mới cho task đã chọn">
+              <button class="btn btn-secondary btn-sm" name="bulk_action" value="interval" disabled>Đổi chu kỳ</button>
+            </div>
+          </div>
+        </form>
+        <p class="cron-bulk-note" id="cronBulkNotice" role="status">Chọn tối đa 500 task. Dừng sẽ ngừng các lượt tiếp theo; lượt đang chạy có thể vẫn hoàn tất.</p>
+      </div>
+      <div class="table-wrap cron-table-wrap" role="region" aria-label="Danh sách task Cron" tabindex="0">
         <table class="cron-table">
           <thead>
             <tr>
+              <th class="cron-select-cell"><input type="checkbox" id="cronSelectAll" class="cron-checkbox" aria-label="Chọn tất cả task đang hiển thị"></th>
               <th>Task</th>
               <th>URL</th>
               <th>Chu kỳ</th>
               <th>Lần tới</th>
-              <th>Status</th>
+              <th>Trạng thái</th>
               <th class="text-right">Thao tác</th>
             </tr>
           </thead>
@@ -1016,9 +1038,10 @@ exit;
               $nl = $timing['label'];
               $urlShort = mb_strlen((string)$du) > 58 ? (mb_substr((string)$du, 0, 58) . '...') : (string)$du;
           ?>
-            <tr>
+            <tr data-cron-row="<?= (int)$t['id'] ?>" data-active="<?= (int)!empty($t['is_active']) ?>" data-interval="<?= (int)$t['interval_seconds'] ?>">
+              <td class="cron-select-cell"><input type="checkbox" class="cron-checkbox" name="ids[]" value="<?= (int)$t['id'] ?>" form="cronBulkForm" aria-label="Chọn task #<?= (int)$t['id'] ?>: <?= e($t['name']) ?>"></td>
               <td>
-                <div class="cron-task-name"><?= e($t['name']) ?></div>
+                <div class="cron-task-name" title="<?= e($t['name']) ?>"><?= e($t['name']) ?></div>
                 <div class="cron-task-id">#<?= (int)$t['id'] ?></div>
               </td>
               <td>
@@ -1034,26 +1057,26 @@ exit;
               </td>
               <td>
                 <?php if (!empty($t['is_active'])): ?>
-                  <span class="cron-badge on" data-task-active="<?= (int)$t['id'] ?>"><i class="fas fa-circle"></i> Active</span>
+                  <span class="cron-badge on" data-task-active="<?= (int)$t['id'] ?>"><i class="fas fa-circle"></i> Đang bật</span>
                 <?php else: ?>
-                  <span class="cron-badge off" data-task-active="<?= (int)$t['id'] ?>"><i class="fas fa-pause"></i> Pause</span>
+                  <span class="cron-badge off" data-task-active="<?= (int)$t['id'] ?>"><i class="fas fa-pause"></i> Tạm dừng</span>
                 <?php endif; ?>
               </td>
               <td>
                 <div class="cron-actions">
-                  <button type="button" class="cron-act" title="Xem log" data-action="view-logs" data-id="<?= (int)$t['id'] ?>"><i class="fas fa-eye"></i></button>
-                  <a class="cron-act" title="Sửa" href="?action=edit&id=<?= (int)$t['id'] ?>"><i class="fas fa-pen"></i></a>
-                  <form method="POST">
+                  <button type="button" class="cron-act" title="Xem log" aria-label="Xem lịch sử chạy" data-action="view-logs" data-id="<?= (int)$t['id'] ?>"><i class="fas fa-eye"></i></button>
+                  <a class="cron-act" title="Sửa" aria-label="Sửa task" data-cron-edit href="?action=edit&id=<?= (int)$t['id'] ?>"><i class="fas fa-pen"></i></a>
+                  <form method="POST" data-cron-confirm="toggle">
                     <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
                     <input type="hidden" name="action" value="toggle">
                     <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
-                    <button type="submit" class="cron-act" title="Bật/Tắt"><i class="fas fa-power-off"></i></button>
+                    <button type="submit" class="cron-act" title="<?= !empty($t['is_active']) ? 'Dừng task' : 'Chạy task' ?>" aria-label="<?= !empty($t['is_active']) ? 'Dừng task' : 'Chạy task' ?>"><i class="fas fa-power-off"></i></button>
                   </form>
-                  <form method="POST" onsubmit="return confirm('Xóa task này?')">
+                  <form method="POST" data-cron-confirm="Xóa task này và toàn bộ lịch sử chạy? Không thể hoàn tác." data-cron-danger>
                     <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
-                    <button type="submit" class="cron-act danger" title="Xóa"><i class="fas fa-trash"></i></button>
+                    <button type="submit" class="cron-act danger" title="Xóa" aria-label="Xóa task"><i class="fas fa-trash"></i></button>
                   </form>
                 </div>
               </td>
@@ -1062,14 +1085,106 @@ exit;
           </tbody>
         </table>
       </div>
+      <div class="cron-empty" id="cronNoMatches" hidden>Không tìm thấy task phù hợp.</div>
     <?php endif; ?>
   </section>
 </div>
 
-<div id="logModal" class="cron-modal hidden" data-modal-close="1">
+<dialog id="cronTaskDialog" class="cron-dialog cron-dialog-form" aria-labelledby="cronTaskTitle">
   <div class="cron-modal-card">
     <div class="cron-modal-head">
-      <h2><i class="fas fa-history text-primary"></i> Lịch sử chạy</h2>
+      <h2 id="cronTaskTitle">Thêm task mới</h2>
+      <button type="button" class="btn btn-ghost btn-sm" data-cron-close aria-label="Đóng">&times;</button>
+    </div>
+    <form method="POST" id="cronTaskForm">
+      <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
+      <input type="hidden" name="action" value="add">
+      <input type="hidden" name="id" value="">
+      <div class="cron-modal-body cron-task-fields">
+        <div class="field">
+          <label for="cron-task-name">Tên task</label>
+          <input class="input" type="text" id="cron-task-name" name="name" required maxlength="120" placeholder="VD: check-status" autofocus>
+        </div>
+        <div class="field">
+          <label for="cron-task-url">URL cần gọi</label>
+          <input class="input" type="url" id="cron-task-url" name="url" required placeholder="https://example.com/job">
+        </div>
+        <div class="field">
+          <label for="cron-task-interval">Chu kỳ (giây)</label>
+          <input class="input" type="number" id="cron-task-interval" name="interval" required min="3" max="86400" value="60" aria-describedby="cronIntervalHint">
+          <span class="hint" id="cronIntervalHint">Từ 3 đến 86400 giây.</span>
+        </div>
+      </div>
+      <div class="cron-modal-foot">
+        <button type="button" class="btn btn-secondary btn-sm" data-cron-close>Hủy</button>
+        <button type="submit" class="btn btn-primary btn-sm" id="cronTaskSave"><i class="fas fa-plus"></i> Thêm task</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="cronConfirmDialog" class="cron-dialog cron-dialog-confirm" aria-labelledby="cronConfirmTitle" aria-describedby="cronConfirmMessage">
+  <div class="cron-modal-card">
+    <div class="cron-modal-head">
+      <h2 id="cronConfirmTitle">Xác nhận thao tác</h2>
+      <button type="button" class="btn btn-ghost btn-sm" data-cron-close aria-label="Đóng">&times;</button>
+    </div>
+    <div class="cron-modal-body"><p id="cronConfirmMessage"></p></div>
+    <div class="cron-modal-foot">
+      <button type="button" class="btn btn-secondary btn-sm" data-cron-close autofocus>Hủy</button>
+      <button type="button" class="btn btn-primary btn-sm" id="cronConfirmAccept">Xác nhận</button>
+    </div>
+  </div>
+</dialog>
+
+  <?php if (!empty($cuser['twofa_secret']) && empty($cuser['twofa_enabled'])): ?>
+  <dialog id="cronTwofaDialog" class="cron-dialog cron-dialog-form" aria-labelledby="cronTwofaTitle" data-auto-open>
+    <div class="cron-modal-card">
+    <div class="cron-modal-head">
+      <h2 id="cronTwofaTitle"><i class="fas fa-shield-halved text-green-300"></i> Xác thực 2FA</h2>
+      <button class="btn btn-ghost btn-sm" type="button" data-cron-close aria-label="Đóng">&times;</button>
+    </div>
+    <div class="cron-modal-body">
+    <p class="text-text-muted text-sm">Nhập secret vào Google Authenticator rồi điền mã xác thực.</p>
+    <div class="cron-2fa-box">
+      <div class="note"><i class="fas fa-shield-halved"></i> Nhập secret bên dưới vào Google Authenticator (không dùng QR bên thứ 3 để tránh lộ secret).</div>
+      <div class="flex-1">
+        <div class="field mb-3">
+          <label>Secret</label>
+          <div class="toolbar">
+            <code class="input cron-secret"><?= e($cuser['twofa_secret']) ?></code>
+            <button type="button" class="btn btn-secondary btn-sm" data-action="copy-secret" aria-label="Sao chép secret" data-secret="<?= e($cuser['twofa_secret']) ?>"><i class="fas fa-copy"></i></button>
+          </div>
+        </div>
+        <div id="twofaMsg" class="hidden mb-3"></div>
+        <form id="twofaForm" method="POST" class="toolbar" style="align-items:flex-end">
+          <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
+          <input type="hidden" name="action" value="confirm_2fa">
+          <div class="field" style="flex:1">
+            <label for="cron-confirm-code">Mã 2FA</label>
+            <input class="input" id="cron-confirm-code" type="text" name="code" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" style="text-align:center;letter-spacing:.35em;font-weight:800">
+          </div>
+          <button class="btn btn-green" type="submit"><i class="fas fa-check"></i> Xác nhận</button>
+        </form>
+      </div>
+    </div>
+    </div>
+    <div class="cron-modal-foot">
+      <form method="POST" data-cron-confirm="Hủy thiết lập 2FA đang chờ?">
+        <input type="hidden" name="csrf_token" value="<?= e(cronCsrfToken()) ?>">
+        <input type="hidden" name="action" value="discard_2fa">
+        <button class="btn btn-secondary btn-sm" type="submit">Hủy thiết lập</button>
+      </form>
+      <button type="button" class="btn btn-secondary btn-sm" data-cron-close>Đóng</button>
+    </div>
+    </div>
+  </dialog>
+  <?php endif; ?>
+
+<dialog id="logModal" class="cron-dialog" aria-labelledby="cronLogTitle">
+  <div class="cron-modal-card">
+    <div class="cron-modal-head">
+      <h2 id="cronLogTitle"><i class="fas fa-history text-primary"></i> Lịch sử chạy</h2>
       <button type="button" class="btn btn-ghost btn-sm" data-action-hide-logs="1" aria-label="Đóng">&times;</button>
     </div>
     <div id="logBody" class="cron-modal-body"></div>
@@ -1077,14 +1192,87 @@ exit;
       <button type="button" class="btn btn-secondary btn-sm" data-action-hide-logs="1">Đóng</button>
     </div>
   </div>
-</div>
+</dialog>
 
 <script <?= function_exists('dvproNonceAttr') ? dvproNonceAttr() : '' ?>>
 window.cronCsrf = <?= json_encode(cronCsrfToken(), JSON_UNESCAPED_UNICODE) ?>;
 
+var cronTaskDialog = document.getElementById('cronTaskDialog');
+var cronTaskForm = document.getElementById('cronTaskForm');
+var cronConfirmDialog = document.getElementById('cronConfirmDialog');
+var cronPendingConfirm = null;
+function cronOpenTask(task) {
+  cronTaskForm.reset();
+  cronTaskForm.elements.action.value = task ? 'update' : 'add';
+  cronTaskForm.elements.id.value = task ? task.id : '';
+  cronTaskForm.elements.name.value = task ? task.name : '';
+  cronTaskForm.elements.url.value = task ? task.url : '';
+  cronTaskForm.elements.interval.value = task ? task.interval : 60;
+  document.getElementById('cronTaskTitle').textContent = task ? 'Sửa task #' + task.id : 'Thêm task mới';
+  document.getElementById('cronTaskSave').innerHTML = task ? '<i class="fas fa-save"></i> Lưu thay đổi' : '<i class="fas fa-plus"></i> Thêm task';
+  cronTaskDialog.showModal();
+}
+function cronAsk(message, callback, danger) {
+  document.getElementById('cronConfirmMessage').textContent = message;
+  document.getElementById('cronConfirmAccept').className = 'btn btn-sm ' + (danger ? 'btn-danger' : 'btn-primary');
+  cronPendingConfirm = callback;
+  cronConfirmDialog.showModal();
+}
+function cronSubmitConfirmed(form, submitter) {
+  // Native submit omits the clicked button; retain its operation explicitly.
+  if (submitter && submitter.name) {
+    var operation = document.createElement('input');
+    operation.type = 'hidden';
+    operation.name = submitter.name;
+    operation.value = submitter.value;
+    form.appendChild(operation);
+  }
+  HTMLFormElement.prototype.submit.call(form);
+}
+document.getElementById('cronAddTask').addEventListener('click', function() { cronOpenTask(null); });
+document.querySelectorAll('[data-cron-edit]').forEach(function(link) {
+  link.addEventListener('click', function(event) {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    var row = link.closest('[data-cron-row]');
+    cronOpenTask({id: row.dataset.cronRow, name: row.querySelector('.cron-task-name').title, url: row.querySelector('.cron-url').title, interval: row.dataset.interval});
+  });
+});
+document.querySelectorAll('.cron-dialog').forEach(function(dialog) {
+  dialog.addEventListener('click', function(event) {
+    if (event.target.closest('[data-cron-close]')) dialog.close();
+    if (event.target === dialog) {
+      var rect = dialog.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
+    }
+  });
+});
+cronConfirmDialog.addEventListener('close', function() { cronPendingConfirm = null; });
+document.getElementById('cronConfirmAccept').addEventListener('click', function() {
+  var callback = cronPendingConfirm;
+  cronPendingConfirm = null;
+  cronConfirmDialog.close();
+  if (callback) callback();
+});
+document.querySelectorAll('form[data-cron-confirm]').forEach(function(form) {
+  form.addEventListener('submit', function(event) {
+    event.preventDefault();
+    var message = form.dataset.cronConfirm;
+    if (message === 'toggle') {
+      var row = form.closest('[data-cron-row]');
+      message = (row.dataset.active === '1' ? 'Dừng' : 'Chạy') + ' task “' + row.querySelector('.cron-task-name').title + '”?';
+    }
+    cronAsk(message, function() { cronSubmitConfirmed(form, event.submitter); }, form.hasAttribute('data-cron-danger'));
+  });
+});
+document.querySelectorAll('[data-auto-open]').forEach(function(dialog) { dialog.showModal(); });
+<?php if (isset($editTask)): ?>
+cronOpenTask(<?= json_encode(['id' => (int)$editTask['id'], 'name' => $editTask['name'], 'url' => $editTask['url_decrypted'], 'interval' => (int)$editTask['interval_seconds']], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>);
+<?php endif; ?>
+
 function hideLogs() {
   var modal = document.getElementById('logModal');
-  if (modal) modal.classList.add('hidden');
+  if (modal) modal.close();
 }
 
 function viewLogs(taskId) {
@@ -1092,7 +1280,7 @@ function viewLogs(taskId) {
   var body = document.getElementById('logBody');
   if (!modal || !body) return;
   body.innerHTML = '<div class="cron-empty"><i class="fas fa-spinner fa-spin"></i><div>Đang tải lịch sử...</div></div>';
-  modal.classList.remove('hidden');
+  if (!modal.open) modal.showModal();
 
   fetch('?action=task_logs&task_id=' + encodeURIComponent(taskId))
     .then(function(res) { return res.json(); })
@@ -1104,10 +1292,12 @@ function viewLogs(taskId) {
       body.innerHTML = '';
       rows.forEach(function(item) {
         var ok = item.status === 'success';
+        var queued = item.status === 'queued';
+        var queuedExisting = item.status === 'queued_existing';
         var running = item.status === 'running';
-        var cls = ok ? 'is-ok' : (running ? 'is-run' : 'is-bad');
-        var label = ok ? 'Thành công' : (running ? 'Đang chạy' : 'Thất bại');
-        var icon = ok ? 'fa-check-circle' : (running ? 'fa-spinner' : 'fa-times-circle');
+        var cls = ok ? 'is-ok' : (queued || queuedExisting || running ? 'is-run' : 'is-bad');
+        var label = ok ? 'Thành công' : (queuedExisting ? 'Đang chờ (đã có job)' : (queued ? 'Đã xếp hàng' : (running ? 'Đang chạy' : 'Thất bại')));
+        var icon = ok ? 'fa-check-circle' : (queuedExisting ? 'fa-clock' : (queued ? 'fa-clock' : (running ? 'fa-spinner' : 'fa-times-circle')));
         var httpClass = (item.http_code >= 200 && item.http_code < 400) ? 'ok' : 'bad';
         var card = document.createElement('div');
         card.className = 'cron-log-item ' + cls;
@@ -1200,6 +1390,7 @@ if (twofaForm) {
 var cronLogout = document.getElementById('cronLogout');
 if (cronLogout) {
   cronLogout.addEventListener('click', function() {
+    cronAsk('Đăng xuất khỏi tài khoản Cron?', function() {
     fetch('?', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
@@ -1208,7 +1399,99 @@ if (cronLogout) {
         csrf_token: window.cronCsrf
       }).toString()
     }).then(function() { location.reload(); });
+    }, false);
   });
+}
+
+var cronBulkForm = document.getElementById('cronBulkForm');
+var cronRows = Array.from(document.querySelectorAll('[data-cron-row]'));
+function cronSelectedRows() {
+  return cronRows.filter(function(row) { return !row.hidden && row.querySelector('[name="ids[]"]').checked; });
+}
+function updateCronSelection() {
+  if (!cronBulkForm) return;
+  var visible = cronRows.filter(function(row) { return !row.hidden; });
+  var selected = cronSelectedRows();
+  var all = document.getElementById('cronSelectAll');
+  all.checked = visible.length > 0 && selected.length === visible.length;
+  all.indeterminate = selected.length > 0 && selected.length < visible.length;
+  all.disabled = !visible.length;
+  document.getElementById('cronSelectedCount').textContent = 'Đã chọn ' + selected.length;
+  document.getElementById('cronClearSelection').disabled = !selected.length;
+  document.getElementById('cronCopyUrls').disabled = !selected.length;
+  cronRows.forEach(function(row) {
+    row.classList.toggle('is-selected', row.querySelector('[name="ids[]"]').checked);
+  });
+  cronBulkForm.querySelectorAll('[name="bulk_action"]').forEach(function(button) {
+    var state = button.value === 'start' ? '0' : (button.value === 'pause' ? '1' : null);
+    button.disabled = !selected.length || selected.length > 500 || (state !== null && !selected.some(function(row) { return row.dataset.active === state; }));
+  });
+}
+function filterCronRows() {
+  if (!cronBulkForm) return;
+  var query = document.getElementById('cronSearch').value.trim().toLocaleLowerCase('vi');
+  var state = document.getElementById('cronStatusFilter').value;
+  cronRows.forEach(function(row) {
+    var text = row.querySelector('.cron-task-name').textContent + ' ' + row.querySelector('.cron-url').title + ' #' + row.dataset.cronRow;
+    row.hidden = !((state === 'all' || row.dataset.active === state) && text.toLocaleLowerCase('vi').includes(query));
+    if (row.hidden) row.querySelector('[name="ids[]"]').checked = false;
+  });
+  var count = cronRows.filter(function(row) { return !row.hidden; }).length;
+  document.getElementById('cronVisibleCount').textContent = count + '/' + cronRows.length + ' task';
+  document.getElementById('cronNoMatches').hidden = count > 0;
+  updateCronSelection();
+}
+if (cronBulkForm) {
+  document.getElementById('cronSearch').addEventListener('input', filterCronRows);
+  document.getElementById('cronStatusFilter').addEventListener('change', filterCronRows);
+  document.getElementById('cronSelectAll').addEventListener('change', function(event) {
+    cronRows.forEach(function(row) { if (!row.hidden) row.querySelector('[name="ids[]"]').checked = event.target.checked; });
+    updateCronSelection();
+  });
+  document.getElementById('cronClearSelection').addEventListener('click', function() {
+    cronRows.forEach(function(row) { row.querySelector('[name="ids[]"]').checked = false; });
+    updateCronSelection();
+  });
+  cronRows.forEach(function(row) { row.querySelector('[name="ids[]"]').addEventListener('change', updateCronSelection); });
+  document.getElementById('cronCopyUrls').addEventListener('click', function() {
+    var urls = cronSelectedRows().map(function(row) { return row.querySelector('.cron-url').title; }).join('\n');
+    var notice = document.getElementById('cronBulkNotice');
+    if (!navigator.clipboard) {
+      notice.textContent = 'Trình duyệt chưa cho phép sao chép. Hãy mở trang bằng HTTPS.';
+      return;
+    }
+    navigator.clipboard.writeText(urls).then(function() {
+      notice.textContent = 'Đã copy ' + cronSelectedRows().length + ' URL.';
+    }).catch(function() { notice.textContent = 'Không copy được. Hãy cấp quyền clipboard cho trang.'; });
+  });
+  cronBulkForm.addEventListener('submit', function(event) {
+    var selected = cronSelectedRows();
+    var operation = event.submitter ? event.submitter.value : '';
+    document.getElementById('cronBulkInterval').required = false;
+    if (!selected.length || selected.length > 500 || !operation) {
+      event.preventDefault();
+      document.getElementById('cronBulkNotice').textContent = 'Chọn từ 1 đến 500 task rồi chọn thao tác.';
+      return;
+    }
+    if (operation === 'interval') {
+      var input = document.getElementById('cronBulkInterval');
+      input.required = true;
+      if (!input.reportValidity()) { event.preventDefault(); return; }
+    }
+    event.preventDefault();
+    var messages = {
+      start: 'Chạy ' + selected.length + ' task đã chọn?',
+      pause: 'Dừng ' + selected.length + ' task đã chọn? Các lượt đang chạy có thể vẫn hoàn tất.',
+      delete: 'Xóa ' + selected.length + ' task đã chọn và toàn bộ lịch sử của chúng? Không thể hoàn tác.',
+      interval: 'Đổi chu kỳ của ' + selected.length + ' task đã chọn thành ' + document.getElementById('cronBulkInterval').value + ' giây?'
+    };
+    cronAsk(messages[operation], function() {
+      cronBulkForm.setAttribute('aria-busy', 'true');
+      cronSubmitConfirmed(cronBulkForm, event.submitter);
+    }, operation === 'delete');
+  });
+  document.getElementById('cronBulkInterval').addEventListener('input', function() { this.required = false; });
+  updateCronSelection();
 }
 
 function tickCountdown() {
@@ -1239,6 +1522,13 @@ function pollTaskStatus() {
     .then(function(res) { return res.json(); })
     .then(function(data) {
       (data.tasks || []).forEach(function(item) {
+        var row = document.querySelector('[data-cron-row="' + item.id + '"]');
+        if (row) {
+          row.dataset.active = item.active ? '1' : '0';
+          var toggle = row.querySelector('form input[value="toggle"]').form.querySelector('button');
+          toggle.title = item.active ? 'Dừng task' : 'Chạy task';
+          toggle.setAttribute('aria-label', toggle.title);
+        }
         var next = document.querySelector('[data-task-next="' + item.id + '"]');
         if (next) {
           next.textContent = item.label || '';
@@ -1254,11 +1544,12 @@ function pollTaskStatus() {
         if (badge) {
           badge.className = 'cron-badge ' + (item.active ? 'on' : 'off');
           badge.innerHTML = item.active
-            ? '<i class="fas fa-circle"></i> Active'
-            : '<i class="fas fa-pause"></i> Pause';
+            ? '<i class="fas fa-circle"></i> Đang bật'
+            : '<i class="fas fa-pause"></i> Tạm dừng';
         }
       });
 
+      if (!cronConfirmDialog.open) filterCronRows();
       var stats = data.stats || {};
       var statMap = {
         cronStatTasks: stats.tasks,
@@ -1286,8 +1577,6 @@ document.addEventListener('click', function(e){
   if(v && typeof viewLogs==='function'){ viewLogs(parseInt(v.getAttribute('data-action-view-logs'),10)||0); }
   var h=e.target.closest('[data-action-hide-logs]');
   if(h && typeof hideLogs==='function'){ hideLogs(); }
-  var m=e.target.closest('[data-modal-close]');
-  if(m && e.target===m && typeof hideLogs==='function'){ hideLogs(); }
   var s=e.target.closest('[data-action="copy-secret"]');
   if(s){
     var val=s.getAttribute('data-secret')||'';

@@ -23,7 +23,7 @@ $content = <<<'HTML'
       <span class="pill pill-slate">Mỗi username 1 dòng</span>
     </div>
 
-    <textarea id="input" class="textarea pretty-scroll th-input" rows="9" spellcheck="false" placeholder="abc123
+    <textarea aria-label="Danh sách username Threads" id="input" class="textarea pretty-scroll th-input" rows="9" spellcheck="false" placeholder="abc123
 xyz_ig
 username"></textarea>
 
@@ -50,14 +50,14 @@ username"></textarea>
         <h2 class="text-green-300"><i class="fas fa-check-circle"></i> Live <span class="pill pill-green">(<span id="liveCount2">0</span>)</span></h2>
         <button type="button" class="btn btn-secondary btn-sm" data-action="copy-text" data-target="liveList"><i class="fa-regular fa-copy"></i> Copy</button>
       </div>
-      <textarea id="liveList" class="textarea pretty-scroll checker-result-box th-box live" rows="14" readonly placeholder="Username LIVE sẽ hiện ở đây..."></textarea>
+      <textarea aria-label="Kết quả Threads LIVE" id="liveList" class="textarea pretty-scroll checker-result-box th-box live" rows="14" readonly placeholder="Username LIVE sẽ hiện ở đây..."></textarea>
     </section>
     <section class="tool-panel checker-result th-result die">
       <div class="tool-panel-head">
         <h2 class="text-red-300"><i class="fas fa-times-circle"></i> Die <span class="pill pill-red">(<span id="dieCount2">0</span>)</span></h2>
         <button type="button" class="btn btn-secondary btn-sm" data-action="copy-text" data-target="dieList"><i class="fa-regular fa-copy"></i> Copy</button>
       </div>
-      <textarea id="dieList" class="textarea pretty-scroll checker-result-box th-box die" rows="14" readonly placeholder="Username DIE sẽ hiện ở đây..."></textarea>
+      <textarea aria-label="Kết quả Threads DIE" id="dieList" class="textarea pretty-scroll checker-result-box th-box die" rows="14" readonly placeholder="Username DIE sẽ hiện ở đây..."></textarea>
     </section>
   </div>
 </div>

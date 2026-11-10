@@ -434,7 +434,7 @@ function dvproRateLimit(string $bucket, int $limit = 0, int $windowSeconds = 0):
     $db = dvproDatabase();
     try {
         $db->beginTransaction();
-        $insert = $db->prepare('INSERT IGNORE INTO app_rate_limits (bucket_key, window_start, request_count, expires_at, updated_at) VALUES (?, ?, 0, ?, NOW())');
+        $insert = $db->prepare('INSERT INTO app_rate_limits (bucket_key, window_start, request_count, expires_at, updated_at) VALUES (?, ?, 0, ?, NOW()) ON DUPLICATE KEY UPDATE bucket_key = app_rate_limits.bucket_key');
         $insert->execute([$bucketKey, $now, date('Y-m-d H:i:s', $now + $windowSeconds)]);
         $select = $db->prepare('SELECT window_start, request_count FROM app_rate_limits WHERE bucket_key = ? FOR UPDATE');
         $select->execute([$bucketKey]);
